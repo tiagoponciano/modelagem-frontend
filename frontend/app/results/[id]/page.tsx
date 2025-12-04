@@ -59,10 +59,15 @@ export default function ResultsPage() {
     );
   }
 
-  if (!projectData?.results || !projectData?.originalData) {
+  if (!projectData?.results) {
     return (
       <div className="h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center relative">
-        <h1 className="text-2xl text-red-500">Dados do projeto incompletos.</h1>
+        <h1 className="text-2xl text-red-500 mb-2">
+          Dados do projeto incompletos.
+        </h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+          O backend não retornou os resultados calculados.
+        </p>
         <button
           onClick={() => navigate("/")}
           className="mt-4 text-slate-600 dark:text-slate-400 hover:text-red-600 transition-colors"
@@ -74,7 +79,12 @@ export default function ResultsPage() {
   }
 
   const { ranking, criteriaWeights } = projectData.results;
-  const criteriaNames = projectData.originalData.criteria;
+
+  // Tenta obter os nomes dos critérios de diferentes fontes
+  const criteriaNames =
+    projectData.originalData?.criteria ||
+    projectData.criteria?.map((c) => ({ id: c.id, name: c.name })) ||
+    [];
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-10 px-4 relative overflow-x-hidden transition-colors duration-300">
@@ -160,10 +170,10 @@ export default function ResultsPage() {
                 Pesos dos Critérios (AHP)
               </h3>
 
-              {Object.entries(criteriaWeights).map(([id, weight]) => {
+              {Object.entries(criteriaWeights).map(([id, weight], index) => {
                 const criterionName =
                   criteriaNames.find((c) => c.id === id)?.name ||
-                  "Desconhecido";
+                  `Critério ${index + 1}`;
                 const percentage = weight * 100;
 
                 return (

@@ -1,4 +1,9 @@
-import type { Option, Criterion, EvaluationValues, CriteriaConfig } from "../store/useDecisionStore";
+import type {
+  Option,
+  Criterion,
+  EvaluationValues,
+  CriteriaConfig,
+} from "../store/useDecisionStore";
 
 export interface ProjectSummary {
   id: string;
@@ -19,19 +24,24 @@ export interface RankingItem {
 export interface Project {
   id: string;
   title: string;
-  cities: Option[];
-  criteria: Criterion[];
-  criteriaMatrix: Record<string, number>;
-  evaluationValues: EvaluationValues;
-  criteriaConfig: CriteriaConfig;
+  cities?: Option[];
+  criteria?: Criterion[];
+  criteriaMatrix?: Record<string, number>;
+  evaluationValues?: EvaluationValues;
+  criteriaConfig?: CriteriaConfig;
   originalData?: {
     criteria: { id: string; name: string }[];
   };
   results?: {
     ranking: RankingItem[];
     criteriaWeights: Record<string, number>;
+    matrixRaw?: number[][];
   };
+  createdAt?: string;
+  updatedAt?: string;
+  status?: string;
+  alternativesCount?: number;
+  criteriaCount?: number;
 }
 
 export type ProjectInput = Omit<Project, "id">;
-

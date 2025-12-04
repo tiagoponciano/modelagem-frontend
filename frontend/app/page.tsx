@@ -1,18 +1,102 @@
 "use client";
 
 import { ThemeToggle } from "../components/ThemeToggle";
+import { DeleteProjectModal } from "../components/DeleteProjectModal";
 import { useRouter } from "next/navigation";
 import { useDecisionStore } from "../store/useDecisionStore";
-import { useProjects } from "../hooks/useProjects";
+import { useProjects, useDeleteProject } from "../hooks/useProjects";
+import { useState } from "react";
+import { api } from "../lib/api";
 
 export default function Home() {
   const router = useRouter();
-  const { resetProject } = useDecisionStore();
+  const { resetProject, loadProject } = useDecisionStore();
   const { data: projects = [], isLoading } = useProjects();
+  const deleteProject = useDeleteProject();
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    projectId: string;
+    projectTitle: string;
+  }>({ isOpen: false, projectId: "", projectTitle: "" });
 
   const handleStartNew = () => {
     resetProject();
     router.push("/setup");
+  };
+
+  const handleEditProject = (projectId: string) => {
+    router.push(`/results/${projectId}`);
+  };
+
+  const handleEditCriteria = async (e: React.MouseEvent, projectId: string) => {
+    e.stopPropagation();
+    try {
+      const projectData = await api.getProjectById(projectId);
+
+      let cities: Array<{ id: string; name: string }> = [];
+
+      if (Array.isArray(projectData.cities) && projectData.cities.length > 0) {
+        cities = projectData.cities;
+      } else if (
+        projectData.results?.ranking &&
+        Array.isArray(projectData.results.ranking) &&
+        projectData.results.ranking.length > 0
+      ) {
+        cities = projectData.results.ranking.map((item) => ({
+          id: item.id,
+          name: item.name,
+        }));
+      } else if (
+        Array.isArray((projectData as any).alternatives) &&
+        (projectData as any).alternatives.length > 0
+      ) {
+        cities = (projectData as any).alternatives;
+      } else if (
+        Array.isArray((projectData as any).options) &&
+        (projectData as any).options.length > 0
+      ) {
+        cities = (projectData as any).options;
+      }
+
+      loadProject(
+        {
+          title: projectData.title || "",
+          cities: cities,
+          criteria: Array.isArray(projectData.criteria)
+            ? projectData.criteria
+            : [],
+          criteriaMatrix: projectData.criteriaMatrix || {},
+          evaluationValues: projectData.evaluationValues || {},
+          criteriaConfig: projectData.criteriaConfig || {},
+        },
+        projectId
+      );
+      router.push("/setup");
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Erro ao carregar projeto para edição."
+      );
+    }
+  };
+
+  const handleDeleteClick = (
+    e: React.MouseEvent,
+    projectId: string,
+    title: string
+  ) => {
+    e.stopPropagation();
+    setDeleteModal({ isOpen: true, projectId, projectTitle: title });
+  };
+
+  const handleDeleteConfirm = async (username: string, password: string) => {
+    await deleteProject.mutateAsync({
+      id: deleteModal.projectId,
+      username,
+      password,
+    });
+    setDeleteModal({ isOpen: false, projectId: "", projectTitle: "" });
   };
 
   return (
@@ -108,9 +192,53 @@ export default function Home() {
               {projects.map((proj) => (
                 <div
                   key={proj.id}
-                  className="group bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 transition-all cursor-pointer shadow-sm hover:shadow-xl hover:shadow-blue-500/10 dark:hover:shadow-none"
+                  onClick={() => handleEditProject(proj.id)}
+                  className="group bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 transition-all cursor-pointer shadow-sm hover:shadow-xl hover:shadow-blue-500/10 dark:hover:shadow-none relative"
                 >
-                  <div className="flex justify-between items-start mb-4">
+                  <div className="absolute top-4 right-4 flex gap-2 z-10">
+                    <button
+                      onClick={(e) => handleDeleteClick(e, proj.id, proj.title)}
+                      className="p-2 text-slate-400 hover:text-red-600 dark:hover:text-red-400 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all opacity-0 group-hover:opacity-100"
+                      title="Excluir projeto"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={(e) => handleEditCriteria(e, proj.id)}
+                      className="p-2 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all opacity-0 group-hover:opacity-100"
+                      title="Editar critérios"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 mb-4">
                     <div
                       className={`p-2.5 rounded-xl transition-colors ${
                         proj.status === "Concluído"
@@ -217,6 +345,15 @@ export default function Home() {
           )}
         </div>
       </main>
+
+      <DeleteProjectModal
+        isOpen={deleteModal.isOpen}
+        onClose={() =>
+          setDeleteModal({ isOpen: false, projectId: "", projectTitle: "" })
+        }
+        onConfirm={handleDeleteConfirm}
+        projectTitle={deleteModal.projectTitle}
+      />
     </div>
   );
 }

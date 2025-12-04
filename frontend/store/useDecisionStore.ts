@@ -27,6 +27,7 @@ interface Project {
 
 interface DecisionStore {
   project: Project;
+  editingProjectId: string | null;
 
   setProjectTitle: (title: string) => void;
   addCity: (option: Option) => void;
@@ -43,6 +44,17 @@ interface DecisionStore {
   setCriterionType: (criterionId: string, type: CriterionType) => void;
 
   resetProject: () => void;
+  loadProject: (
+    projectData: {
+      title: string;
+      cities?: Option[];
+      criteria?: Criterion[];
+      criteriaMatrix?: Record<string, number>;
+      evaluationValues?: EvaluationValues;
+      criteriaConfig?: CriteriaConfig;
+    },
+    projectId?: string
+  ) => void;
 }
 
 export const useDecisionStore = create<DecisionStore>((set) => ({
@@ -54,6 +66,7 @@ export const useDecisionStore = create<DecisionStore>((set) => ({
     evaluationValues: {},
     criteriaConfig: {},
   },
+  editingProjectId: null,
 
   setProjectTitle: (title) =>
     set((state) => ({ project: { ...state.project, title } })),
@@ -130,5 +143,19 @@ export const useDecisionStore = create<DecisionStore>((set) => ({
         evaluationValues: {},
         criteriaConfig: {},
       },
+      editingProjectId: null,
+    }),
+
+  loadProject: (projectData, projectId) =>
+    set({
+      project: {
+        title: projectData.title || "",
+        cities: projectData.cities || [],
+        criteria: projectData.criteria || [],
+        criteriaMatrix: projectData.criteriaMatrix || {},
+        evaluationValues: projectData.evaluationValues || {},
+        criteriaConfig: projectData.criteriaConfig || {},
+      },
+      editingProjectId: projectId || null,
     }),
 }));
