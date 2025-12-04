@@ -30,7 +30,12 @@ export interface Project {
   evaluationValues?: EvaluationValues;
   criteriaConfig?: CriteriaConfig;
   originalData?: {
-    criteria: { id: string; name: string }[];
+    title?: string;
+    cities?: Option[];
+    criteria?: { id: string; name: string }[];
+    criteriaMatrix?: Record<string, number>;
+    evaluationValues?: EvaluationValues;
+    criteriaConfig?: CriteriaConfig;
   };
   results?: {
     ranking: RankingItem[];

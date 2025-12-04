@@ -32,11 +32,17 @@ export default function Home() {
     e.stopPropagation();
     try {
       const projectData = await api.getProjectById(projectId);
+      const originalData = projectData.originalData;
 
       let cities: Array<{ id: string; name: string }> = [];
 
       if (Array.isArray(projectData.cities) && projectData.cities.length > 0) {
         cities = projectData.cities;
+      } else if (
+        Array.isArray(originalData?.cities) &&
+        originalData.cities.length > 0
+      ) {
+        cities = originalData.cities;
       } else if (
         projectData.results?.ranking &&
         Array.isArray(projectData.results.ranking) &&
@@ -60,14 +66,21 @@ export default function Home() {
 
       loadProject(
         {
-          title: projectData.title || "",
+          title: projectData.title || originalData?.title || "",
           cities: cities,
           criteria: Array.isArray(projectData.criteria)
             ? projectData.criteria
+            : Array.isArray(originalData?.criteria)
+            ? originalData.criteria.map((c) => ({ id: c.id, name: c.name }))
             : [],
-          criteriaMatrix: projectData.criteriaMatrix || {},
-          evaluationValues: projectData.evaluationValues || {},
-          criteriaConfig: projectData.criteriaConfig || {},
+          criteriaMatrix:
+            projectData.criteriaMatrix || originalData?.criteriaMatrix || {},
+          evaluationValues:
+            projectData.evaluationValues ||
+            originalData?.evaluationValues ||
+            {},
+          criteriaConfig:
+            projectData.criteriaConfig || originalData?.criteriaConfig || {},
         },
         projectId
       );

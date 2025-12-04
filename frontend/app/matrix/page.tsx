@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useDecisionStore } from "../../store/useDecisionStore";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import { useNavigation } from "../../hooks/useNavigation";
@@ -24,6 +24,40 @@ export default function MatrixPage() {
     }
     return p;
   }, [project.criteria]);
+
+  useEffect(() => {
+    if (pairs.length === 0) return;
+    
+    const [idA, idB] = pairs[currentPairIndex];
+    const key = `${idA}-${idB}`;
+    const reverseKey = `${idB}-${idA}`;
+    
+    const value = project.criteriaMatrix[key];
+    if (value !== undefined && value > 0) {
+      if (value >= 1) {
+        setSliderValue(0);
+      } else {
+        const saaty = 1 / value;
+        const sliderPos = (saaty - 1) / 2;
+        setSliderValue(Math.min(Math.max(Math.round(sliderPos), SLIDER_MIN), SLIDER_MAX));
+      }
+      return;
+    }
+    
+    const reverseValue = project.criteriaMatrix[reverseKey];
+    if (reverseValue !== undefined && reverseValue > 0) {
+      if (reverseValue >= 1) {
+        const sliderPos = -((reverseValue - 1) / 2);
+        setSliderValue(Math.min(Math.max(Math.round(sliderPos), SLIDER_MIN), SLIDER_MAX));
+      } else {
+        setSliderValue(0);
+      }
+      return;
+    }
+    
+    setSliderValue(0);
+  }, [currentPairIndex, pairs, project.criteriaMatrix]);
+
 
   if (pairs.length === 0) {
     if (typeof window !== "undefined") navigate("/setup");

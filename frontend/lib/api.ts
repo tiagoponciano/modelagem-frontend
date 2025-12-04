@@ -85,6 +85,21 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(projectData),
       });
+
+      if (response.status === 404) {
+        throw new ApiError(
+          "Endpoint PATCH não encontrado no backend. O método PATCH pode não estar implementado.",
+          404
+        );
+      }
+
+      if (response.status === 405) {
+        throw new ApiError(
+          "Método PATCH não permitido. Verifique se o backend está configurado corretamente.",
+          405
+        );
+      }
+
       return handleResponse<Project>(response);
     } catch (error) {
       if (error instanceof ApiError) {
@@ -107,6 +122,42 @@ export const api = {
           Authorization: `Basic ${btoa(`${username}:${password}`)}`,
         },
       });
+
+      if (response.status === 204 || response.status === 200) {
+        return;
+      }
+
+      if (response.status === 404) {
+        let errorMessage =
+          "Endpoint DELETE não encontrado no backend. O método DELETE pode não estar implementado.";
+        try {
+          const errorData = await response.json();
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+        } catch {}
+        throw new ApiError(errorMessage, 404);
+      }
+
+      if (response.status === 405) {
+        throw new ApiError(
+          "Método DELETE não permitido. Verifique se o backend está configurado corretamente.",
+          405
+        );
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        let errorMessage =
+          "Credenciais inválidas ou sem permissão para excluir.";
+        try {
+          const errorData = await response.json();
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+        } catch {}
+        throw new ApiError(errorMessage, response.status);
+      }
+
       if (!response.ok) {
         await handleResponse<never>(response);
       }

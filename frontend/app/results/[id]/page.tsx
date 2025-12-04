@@ -80,7 +80,6 @@ export default function ResultsPage() {
 
   const { ranking, criteriaWeights } = projectData.results;
 
-  // Tenta obter os nomes dos critérios de diferentes fontes
   const criteriaNames =
     projectData.originalData?.criteria ||
     projectData.criteria?.map((c) => ({ id: c.id, name: c.name })) ||
