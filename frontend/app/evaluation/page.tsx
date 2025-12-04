@@ -9,20 +9,41 @@ export default function EvaluationPage() {
   const router = useRouter();
   const { project, setEvaluationValue, setCriterionType } = useDecisionStore();
   const [isProcessing, setIsProcessing] = useState(false);
-
-  // Proteção simples
-  if (project.cities.length === 0 || project.criteria.length === 0) {
-    if (typeof window !== "undefined") router.push("/setup");
-    return null;
-  }
+  // ... (código de proteção inicial mantido) ...
 
   const handleFinish = async () => {
+    // 1. Validação básica de preenchimento (Opcional: checar se todos os inputs estão preenchidos)
+    if (project.criteria.length === 0 || project.cities.length === 0) {
+      alert("Erro: Defina pelo menos 2 opções e 2 critérios.");
+      return;
+    }
+
     setIsProcessing(true);
-    console.log("Enviando Projeto:", project);
-    setTimeout(() => {
-      alert("Enviado para cálculo! (Backend)");
+
+    try {
+      // 2. Chamada POST para o Backend (NestJS)
+      const response = await fetch("http://localhost:3001/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(project), // Envia todo o objeto do projeto
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Erro HTTP: ${response.status} - ${response.statusText}`
+        );
+      }
+
+      const data = await response.json();
+
+      // 3. Sucesso: Redireciona para a página de resultados, passando o ID
+      router.push(`/results/${data.id}`);
+    } catch (error) {
+      console.error("Erro ao calcular AHP:", error);
+      alert("Houve um erro no cálculo. Verifique o console do backend.");
       setIsProcessing(false);
-    }, 1500);
+    }
+    // O setIsProcessing(false) é opcional aqui porque o router.push já vai desmontar o componente.
   };
 
   return (
@@ -62,33 +83,39 @@ export default function EvaluationPage() {
               <thead className="text-xs text-slate-500 uppercase bg-slate-100 dark:bg-slate-950/50 dark:text-slate-400">
                 <tr>
                   <th className="px-6 py-4 font-bold sticky left-0 bg-slate-100 dark:bg-slate-950 z-10 shadow-sm">
-                    Opções \ Critérios
+                    Opções Critérios
                   </th>
                   {project.criteria.map((crit) => (
                     <th key={crit.id} className="px-6 py-3 min-w-[200px]">
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-col items-center text-center gap-2">
                         <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
                           {crit.name}
                         </span>
-                        <div className="flex bg-slate-200 dark:bg-slate-800 rounded-lg p-0.5 w-fit">
+                        <div className="flex bg-slate-200 dark:bg-slate-800 rounded-lg p-1 gap-1">
                           <button
                             onClick={() => setCriterionType(crit.id, "BENEFIT")}
-                            className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${
-                              (project.criteriaConfig[crit.id] || "BENEFIT") ===
-                              "BENEFIT"
-                                ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm"
-                                : "text-slate-400 hover:text-slate-600"
-                            }`}
+                            className={`
+      px-3 py-1 rounded-md text-[11px] font-bold transition-all w-20 text-center
+      ${
+        project.criteriaConfig[crit.id] !== "COST"
+          ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm"
+          : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+      }
+    `}
                           >
                             ↑ Maior
                           </button>
+
                           <button
                             onClick={() => setCriterionType(crit.id, "COST")}
-                            className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${
-                              project.criteriaConfig[crit.id] === "COST"
-                                ? "bg-white dark:bg-slate-700 text-red-500 shadow-sm"
-                                : "text-slate-400 hover:text-slate-600"
-                            }`}
+                            className={`
+      px-3 py-1 rounded-md text-[11px] font-bold transition-all w-20 text-center
+      ${
+        project.criteriaConfig[crit.id] === "COST"
+          ? "bg-white dark:bg-slate-700 text-red-500 shadow-sm"
+          : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+      }
+    `}
                           >
                             ↓ Menor
                           </button>
