@@ -77,7 +77,7 @@ export default function MatrixPage() {
       setCurrentPairIndex((prev) => prev + 1);
     } else {
       alert("Comparações finalizadas! Vamos ver o resultado (Futuro)");
-      // router.push('/results');
+      router.push('/evaluation');
     }
   };
 
