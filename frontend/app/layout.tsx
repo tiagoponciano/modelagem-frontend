@@ -1,6 +1,5 @@
-// app/layout.tsx
 import "./globals.css";
-import { ThemeProvider } from "./providers"; // ou o caminho correto
+import { ThemeProvider } from "./providers";
 
 export default function RootLayout({
   children,
@@ -10,8 +9,12 @@ export default function RootLayout({
   return (
     <html lang="pt-br" suppressHydrationWarning>
       <body>
-        {/* A MÁGICA ESTÁ AQUI: attribute="class" */}
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange={false}
+        >
           {children}
         </ThemeProvider>
       </body>

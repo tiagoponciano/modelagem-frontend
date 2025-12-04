@@ -1,17 +1,17 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: "class", // Importante para o dark mode manual funcionar bem
+  darkMode: "class",
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./components/**/*.{js,ts,jsx,tsx,mdx}", // <--- VERIFIQUE SE ESTA LINHA EXISTE
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
-      // suas extensões...
     },
   },
   plugins: [],
 };
 export default config;
+

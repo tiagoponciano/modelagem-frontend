@@ -1,57 +1,46 @@
 "use client";
 
-import { useState } from "react";
 import { useDecisionStore } from "../../store/useDecisionStore";
-import { useRouter } from "next/navigation";
 import { ThemeToggle } from "../../components/ThemeToggle";
+import { useNavigation } from "../../hooks/useNavigation";
+import { useForm } from "../../hooks/useForm";
 
 export default function CriteriaPage() {
-  const router = useRouter();
   const { project, addCriterion, removeCriterion } = useDecisionStore();
-
-  const [newCriterionName, setNewCriterionName] = useState("");
-  const [isNavigating, setIsNavigating] = useState(false);
+  const { navigate, isNavigating } = useNavigation();
+  const { values, setValue, handleChange } = useForm({ newCriterionName: "" });
 
   const handleAddCriterion = () => {
-    if (!newCriterionName.trim()) return;
+    if (!values.newCriterionName.trim()) return;
     addCriterion({
       id: crypto.randomUUID(),
-      name: newCriterionName,
+      name: values.newCriterionName,
     });
-    setNewCriterionName("");
+    setValue("newCriterionName", "");
   };
 
   const handleNextStep = () => {
-    // Validação
     if (project.criteria.length < 2) {
       alert(
         "Por favor, adicione pelo menos 2 critérios (ex: Preço, Qualidade)."
       );
       return;
     }
-
-    // 1. Ativa loading
-    setIsNavigating(true);
-
-    // 2. Navega
-    router.push("/matrix");
+    navigate("/matrix");
   };
 
   return (
     <div className="min-h-screen transition-colors duration-300 bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center py-12 px-4 sm:px-6 relative overflow-hidden">
-      {/* Background Decorativo (Roxo) */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-purple-200/20 dark:bg-purple-900/10 blur-[100px] rounded-full pointer-events-none" />
 
-      {/* Botão de Tema */}
       <div className="absolute top-6 right-6 z-10">
         <ThemeToggle />
       </div>
 
       <div className="w-full max-w-2xl relative z-10">
-        {/* Navbar / Breadcrumb */}
         <div className="flex items-center justify-between mb-6 px-2">
           <button
-            onClick={() => router.back()}
+            onClick={() => navigate("/setup")}
             className="group flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-purple-600 dark:text-slate-400 dark:hover:text-purple-400 transition-colors"
           >
             <span className="group-hover:-translate-x-1 transition-transform">
@@ -67,7 +56,6 @@ export default function CriteriaPage() {
           </div>
         </div>
 
-        {/* CARD PRINCIPAL */}
         <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl p-8 rounded-2xl shadow-2xl shadow-slate-200/50 dark:shadow-black/50 border border-white/20 dark:border-slate-800 transition-all duration-300">
           <div className="mb-8">
             <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2 tracking-tight">
@@ -78,7 +66,6 @@ export default function CriteriaPage() {
             </p>
           </div>
 
-          {/* Área 1: Contexto (Visualmente igual ao Input de Título do Setup) */}
           <div className="mb-6">
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">
               Decisão Atual
@@ -88,7 +75,6 @@ export default function CriteriaPage() {
             </div>
           </div>
 
-          {/* Área 2: Adicionar Critério (Igual ao Adicionar Opção) */}
           <div className="mb-2">
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">
               Adicionar Critério
@@ -98,14 +84,14 @@ export default function CriteriaPage() {
                 type="text"
                 className="flex-1 p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all"
                 placeholder="Ex: Custo, Conforto, Rapidez..."
-                value={newCriterionName}
-                onChange={(e) => setNewCriterionName(e.target.value)}
+                value={values.newCriterionName}
+                onChange={handleChange("newCriterionName")}
                 onKeyDown={(e) => e.key === "Enter" && handleAddCriterion()}
                 disabled={isNavigating}
               />
               <button
                 onClick={handleAddCriterion}
-                disabled={!newCriterionName.trim() || isNavigating}
+                disabled={!values.newCriterionName.trim() || isNavigating}
                 className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 rounded-lg font-semibold transition-all shadow-md active:scale-95"
               >
                 +
@@ -113,7 +99,6 @@ export default function CriteriaPage() {
             </div>
           </div>
 
-          {/* LISTA FIXA (Agora h-60 igual ao Setup) */}
           <div className="mt-4 h-60 bg-slate-50/50 dark:bg-slate-950/30 rounded-xl border border-slate-100 dark:border-slate-800/50 flex flex-col relative overflow-hidden">
             {project.criteria.length === 0 ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
@@ -170,7 +155,6 @@ export default function CriteriaPage() {
             )}
           </div>
 
-          {/* RODAPÉ DO CARD */}
           <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800 flex justify-end">
             <button
               onClick={handleNextStep}

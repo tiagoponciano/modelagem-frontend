@@ -1,7 +1,5 @@
 import { create } from "zustand";
 
-// --- TIPOS E INTERFACES ---
-
 export interface Option {
   id: string;
   name: string;
@@ -14,35 +12,28 @@ export interface Criterion {
 
 export type CriterionType = "BENEFIT" | "COST";
 
-// Chave: "idCidade-idCriterio" -> Valor numérico
 export type EvaluationValues = Record<string, number>;
 
-// Chave: "idCriterio" -> "BENEFIT" ou "COST"
 export type CriteriaConfig = Record<string, CriterionType>;
 
 interface Project {
   title: string;
   cities: Option[];
   criteria: Criterion[];
-  // Pesos das comparações entre critérios (Matriz AHP)
   criteriaMatrix: Record<string, number>;
-  // Valores reais (Input da tabela)
   evaluationValues: EvaluationValues;
-  // Configuração (Maior melhor ou Menor melhor)
   criteriaConfig: CriteriaConfig;
 }
 
 interface DecisionStore {
   project: Project;
 
-  // Ações Básicas
   setProjectTitle: (title: string) => void;
   addCity: (option: Option) => void;
   removeCity: (id: string) => void;
   addCriterion: (criterion: Criterion) => void;
   removeCriterion: (id: string) => void;
 
-  // Ações de Matriz e Avaliação
   setCriteriaJudgment: (idA: string, idB: string, value: number) => void;
   setEvaluationValue: (
     cityId: string,
@@ -51,11 +42,8 @@ interface DecisionStore {
   ) => void;
   setCriterionType: (criterionId: string, type: CriterionType) => void;
 
-  // Reset
   resetProject: () => void;
 }
-
-// --- IMPLEMENTAÇÃO DA STORE ---
 
 export const useDecisionStore = create<DecisionStore>((set) => ({
   project: {

@@ -1,10 +1,26 @@
-// app/providers.tsx (ou onde você criou)
 "use client";
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { type ThemeProviderProps } from "next-themes/dist/types";
+import { useState } from "react";
+
+const queryClientOptions = {
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+};
 
 export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
-  // O "...props" é essencial para o attribute="class" funcionar
-  return <NextThemesProvider {...props}>{children}</NextThemesProvider>;
+  const [queryClient] = useState(() => new QueryClient(queryClientOptions));
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <NextThemesProvider {...props}>{children}</NextThemesProvider>
+    </QueryClientProvider>
+  );
 }

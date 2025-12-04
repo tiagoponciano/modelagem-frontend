@@ -1,49 +1,28 @@
 "use client";
 
-import { useState } from "react";
 import { useDecisionStore } from "../../store/useDecisionStore";
-import { useRouter } from "next/navigation";
 import { ThemeToggle } from "../../components/ThemeToggle";
+import { useNavigation } from "../../hooks/useNavigation";
+import { useCreateProject } from "../../hooks/useProjects";
 
 export default function EvaluationPage() {
-  const router = useRouter();
+  const { navigate } = useNavigation();
   const { project, setEvaluationValue, setCriterionType } = useDecisionStore();
-  const [isProcessing, setIsProcessing] = useState(false);
-  // ... (código de proteção inicial mantido) ...
+  const createProject = useCreateProject();
 
   const handleFinish = async () => {
-    // 1. Validação básica de preenchimento (Opcional: checar se todos os inputs estão preenchidos)
     if (project.criteria.length === 0 || project.cities.length === 0) {
       alert("Erro: Defina pelo menos 2 opções e 2 critérios.");
       return;
     }
 
-    setIsProcessing(true);
-
     try {
-      // 2. Chamada POST para o Backend (NestJS)
-      const response = await fetch("http://localhost:3001/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(project), // Envia todo o objeto do projeto
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `Erro HTTP: ${response.status} - ${response.statusText}`
-        );
-      }
-
-      const data = await response.json();
-
-      // 3. Sucesso: Redireciona para a página de resultados, passando o ID
-      router.push(`/results/${data.id}`);
+      const data = await createProject.mutateAsync(project);
+      navigate(`/results/${data.id}`);
     } catch (error) {
       console.error("Erro ao calcular AHP:", error);
       alert("Houve um erro no cálculo. Verifique o console do backend.");
-      setIsProcessing(false);
     }
-    // O setIsProcessing(false) é opcional aqui porque o router.push já vai desmontar o componente.
   };
 
   return (
@@ -56,7 +35,7 @@ export default function EvaluationPage() {
       <div className="w-full max-w-5xl relative z-10">
         <div className="flex items-center justify-between mb-8 px-2">
           <button
-            onClick={() => router.back()}
+            onClick={() => navigate("/matrix")}
             className="group flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 transition-colors"
           >
             &larr; Voltar
@@ -167,10 +146,10 @@ export default function EvaluationPage() {
           <div className="flex justify-end pt-4">
             <button
               onClick={handleFinish}
-              disabled={isProcessing}
+              disabled={createProject.isPending}
               className="bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 dark:hover:bg-emerald-500 text-white text-lg px-10 py-4 rounded-xl font-bold transition-all shadow-xl hover:-translate-y-0.5 flex items-center gap-2 disabled:opacity-70 disabled:cursor-wait"
             >
-              {isProcessing ? "Calculando..." : "Calcular Resultado"}
+              {createProject.isPending ? "Calculando..." : "Calcular Resultado"}
             </button>
           </div>
         </div>

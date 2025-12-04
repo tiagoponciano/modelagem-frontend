@@ -1,56 +1,44 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { useDecisionStore } from "../../store/useDecisionStore";
-import { useRouter } from "next/navigation";
 import { ThemeToggle } from "../../components/ThemeToggle";
+import { useNavigation } from "../../hooks/useNavigation";
+import { useForm } from "../../hooks/useForm";
 
 export default function SetupPage() {
-  const router = useRouter();
-  const { project, setProjectTitle, addCity, removeCity, resetProject } =
-    useDecisionStore();
-
-  const [newCityName, setNewCityName] = useState("");
-  const [isNavigating, setIsNavigating] = useState(false); // <--- NOVO ESTADO DE LOADING
+  const { project, setProjectTitle, addCity, removeCity } = useDecisionStore();
+  const { navigate, isNavigating } = useNavigation();
+  const { values, setValue, handleChange } = useForm({ newCityName: "" });
 
   const handleAddCity = () => {
-    if (!newCityName.trim()) return;
+    if (!values.newCityName.trim()) return;
     addCity({
       id: crypto.randomUUID(),
-      name: newCityName,
+      name: values.newCityName,
     });
-    setNewCityName("");
+    setValue("newCityName", "");
   };
 
   const handleNextStep = () => {
-    // Validação
     if (!project.title || project.cities.length < 2) {
       alert("Por favor, preencha o título e adicione pelo menos 2 opções.");
       return;
     }
-
-    // 1. Ativa o estado de carregamento
-    setIsNavigating(true);
-
-    // 2. Navega direto (sem alert)
-    router.push("/criteria");
+    navigate("/criteria");
   };
 
   return (
     <div className="min-h-screen transition-colors duration-300 bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center py-12 px-4 sm:px-6 relative overflow-hidden">
-      {/* Background Decorativo */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-indigo-200/20 dark:bg-indigo-900/10 blur-[100px] rounded-full pointer-events-none" />
 
-      {/* Botão de Tema */}
       <div className="absolute top-6 right-6 z-10">
         <ThemeToggle />
       </div>
 
       <div className="w-full max-w-2xl relative z-10">
-        {/* Cabeçalho */}
         <div className="flex items-center justify-between mb-6 px-2">
           <button
-            onClick={() => router.push("/")}
+            onClick={() => navigate("/")}
             className="group flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors"
           >
             <span className="group-hover:-translate-x-1 transition-transform">
@@ -66,7 +54,6 @@ export default function SetupPage() {
           </div>
         </div>
 
-        {/* CARD PRINCIPAL */}
         <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl p-8 rounded-2xl shadow-2xl shadow-slate-200/50 dark:shadow-black/50 border border-white/20 dark:border-slate-800 transition-all duration-300">
           <div className="mb-8">
             <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-2 tracking-tight">
@@ -77,7 +64,6 @@ export default function SetupPage() {
             </p>
           </div>
 
-          {/* 1. Título */}
           <div className="mb-6">
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">
               Objetivo da Decisão
@@ -89,11 +75,10 @@ export default function SetupPage() {
               placeholder="Ex: Qual carro devo comprar?"
               value={project.title}
               onChange={(e) => setProjectTitle(e.target.value)}
-              disabled={isNavigating} // Trava enquanto carrega
+              disabled={isNavigating}
             />
           </div>
 
-          {/* 2. Adicionar Alternativas */}
           <div className="mb-2">
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">
               Opções Disponíveis
@@ -103,14 +88,14 @@ export default function SetupPage() {
                 type="text"
                 className="flex-1 p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
                 placeholder="Digite uma opção..."
-                value={newCityName}
-                onChange={(e) => setNewCityName(e.target.value)}
+                value={values.newCityName}
+                onChange={handleChange("newCityName")}
                 onKeyDown={(e) => e.key === "Enter" && handleAddCity()}
                 disabled={isNavigating}
               />
               <button
                 onClick={handleAddCity}
-                disabled={!newCityName.trim() || isNavigating}
+                disabled={!values.newCityName.trim() || isNavigating}
                 className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-5 rounded-lg font-semibold transition-all shadow-md active:scale-95"
               >
                 +
@@ -118,7 +103,6 @@ export default function SetupPage() {
             </div>
           </div>
 
-          {/* LISTA FIXA */}
           <div className="mt-4 h-60 bg-slate-50/50 dark:bg-slate-950/30 rounded-xl border border-slate-100 dark:border-slate-800/50 flex flex-col relative overflow-hidden">
             {project.cities.length === 0 ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
@@ -175,11 +159,10 @@ export default function SetupPage() {
             )}
           </div>
 
-          {/* RODAPÉ DO CARD COM LOADING NO BOTÃO */}
           <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800 flex justify-end">
             <button
               onClick={handleNextStep}
-              disabled={isNavigating} // Impede cliques duplos
+              disabled={isNavigating}
               className="bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-500 disabled:opacity-70 disabled:cursor-wait text-white text-base px-8 py-3 rounded-xl font-bold transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center gap-2"
             >
               {isNavigating ? (

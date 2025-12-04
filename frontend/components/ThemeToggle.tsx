@@ -76,7 +76,6 @@ export function ThemeToggle() {
 
   return (
     <div className="relative" ref={menuRef}>
-      {/* Botão Principal (Apenas Ícone) */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center justify-center w-10 h-10 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all text-slate-600 dark:text-slate-300 shadow-sm"
@@ -89,7 +88,6 @@ export function ThemeToggle() {
           : icons.system}
       </button>
 
-      {/* Menu Dropdown (Em Inglês) */}
       {isOpen && (
         <div className="absolute right-0 mt-2 w-32 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
           <div className="py-1">

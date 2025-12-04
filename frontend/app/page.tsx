@@ -1,61 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ThemeToggle } from "../components/ThemeToggle"; // Verifique se o caminho está correto
-import { useRouter } from "next/navigation"; // Import para navegação via código
-import { useDecisionStore } from "../store/useDecisionStore"; // Import da Store
-
-// Tipo simplificado do projeto para listagem
-interface ProjectSummary {
-  id: string;
-  title: string;
-  status: "Rascunho" | "Concluído";
-  updatedAt: string;
-  alternativesCount: number;
-  criteriaCount: number;
-}
+import { ThemeToggle } from "../components/ThemeToggle";
+import { useRouter } from "next/navigation";
+import { useDecisionStore } from "../store/useDecisionStore";
+import { useProjects } from "../hooks/useProjects";
 
 export default function Home() {
-  const router = useRouter(); // Hook de navegação
-  const { resetProject } = useDecisionStore(); // Ação para limpar a store
+  const router = useRouter();
+  const { resetProject } = useDecisionStore();
+  const { data: projects = [], isLoading } = useProjects();
 
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Busca os dados do Backend ao carregar a página
-  useEffect(() => {
-    async function fetchProjects() {
-      try {
-        const response = await fetch("http://localhost:3001/projects");
-        if (response.ok) {
-          const data = await response.json();
-          setProjects(data);
-        } else {
-          setProjects([]);
-        }
-      } catch (error) {
-        console.log("Backend ainda não conectado ou offline.");
-        setProjects([]);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    fetchProjects();
-  }, []);
-
-  // Função para iniciar novo projeto limpando os dados antigos
   const handleStartNew = () => {
-    resetProject(); // <--- LIMPA OS DADOS DA STORE AQUI
-    router.push("/setup"); // Navega para a página de configuração
+    resetProject();
+    router.push("/setup");
   };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300 relative overflow-x-hidden">
-      {/* Background Decorativo (Glow) */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-blue-400/20 dark:bg-blue-900/20 blur-[100px] rounded-full pointer-events-none" />
-
-      {/* NAVBAR (Estilo Glassmorphism) */}
       <nav className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-6 h-20 flex justify-between items-center">
           <div>
@@ -68,11 +30,9 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Avatar do Usuário */}
             <div className="w-9 h-9 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-white dark:ring-slate-800">
               TP
             </div>
-            {/* Separador vertical */}
             <div className="h-6 w-px bg-slate-200 dark:bg-slate-800"></div>
             <ThemeToggle />
           </div>
@@ -80,7 +40,6 @@ export default function Home() {
       </nav>
 
       <main className="max-w-6xl mx-auto px-6 py-12 relative z-10">
-        {/* HERO CARD (Banner de Novo Projeto) */}
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-200 dark:border-slate-800 text-center mb-16 transition-colors duration-300">
           <div className="max-w-2xl mx-auto">
             <div className="inline-flex items-center justify-center p-3 bg-blue-50 dark:bg-blue-900/30 rounded-full mb-6 text-blue-600 dark:text-blue-400">
@@ -107,7 +66,6 @@ export default function Home() {
               estratégias de forma matemática e imparcial.
             </p>
 
-            {/* BOTÃO QUE LIMPA A STORE ANTES DE NAVEGAR */}
             <button
               onClick={handleStartNew}
               className="inline-flex items-center justify-center px-8 py-4 text-base font-bold text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 rounded-xl transition-all shadow-lg hover:shadow-blue-500/30 hover:-translate-y-1"
@@ -117,7 +75,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* SEÇÃO DE LISTA */}
         <div>
           <div className="flex items-center justify-between mb-6 px-2">
             <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
@@ -129,7 +86,6 @@ export default function Home() {
           </div>
 
           {isLoading ? (
-            // Skeleton Loading (Opcional, mas fica bonito)
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-pulse">
               {[1, 2, 3].map((i) => (
                 <div
@@ -139,7 +95,6 @@ export default function Home() {
               ))}
             </div>
           ) : projects.length === 0 ? (
-            // Estado Vazio
             <div className="text-center py-16 bg-white/50 dark:bg-slate-900/50 border-2 border-dashed border-slate-300 dark:border-slate-800 rounded-2xl backdrop-blur-sm">
               <p className="text-slate-500 dark:text-slate-400 text-lg">
                 Nenhum projeto encontrado.
@@ -149,7 +104,6 @@ export default function Home() {
               </p>
             </div>
           ) : (
-            // GRID DE PROJETOS
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {projects.map((proj) => (
                 <div
@@ -157,7 +111,6 @@ export default function Home() {
                   className="group bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 transition-all cursor-pointer shadow-sm hover:shadow-xl hover:shadow-blue-500/10 dark:hover:shadow-none"
                 >
                   <div className="flex justify-between items-start mb-4">
-                    {/* Ícone baseado no status */}
                     <div
                       className={`p-2.5 rounded-xl transition-colors ${
                         proj.status === "Concluído"
@@ -198,7 +151,6 @@ export default function Home() {
                       )}
                     </div>
 
-                    {/* Badge de Status */}
                     <span
                       className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${
                         proj.status === "Concluído"
