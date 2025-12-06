@@ -56,6 +56,8 @@ export default function DataEntryPage() {
   const [selectedPortIndex, setSelectedPortIndex] = useState(0);
   const selectedPort = ports[selectedPortIndex];
 
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+
   if (!currentPage) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
@@ -169,11 +171,36 @@ export default function DataEntryPage() {
   ) => {
     if (cityAId === cityBId) return;
 
+    if (value === 0 || isNaN(value)) {
+      setCriterionFieldValue(
+        cityAId,
+        currentPage.id,
+        `ahp-price-${cityBId}`,
+        0
+      );
+      setCriterionFieldValue(
+        cityBId,
+        currentPage.id,
+        `ahp-price-${cityAId}`,
+        0
+      );
+      return;
+    }
+
+    const roundedValue = Math.round(value * 100) / 100;
     setCriterionFieldValue(
       cityAId,
       currentPage.id,
       `ahp-price-${cityBId}`,
-      value
+      roundedValue
+    );
+
+    const reciprocalValue = Math.round((1 / roundedValue) * 100) / 100;
+    setCriterionFieldValue(
+      cityBId,
+      currentPage.id,
+      `ahp-price-${cityAId}`,
+      reciprocalValue
     );
   };
 
@@ -218,8 +245,8 @@ export default function DataEntryPage() {
     }
 
     const n = matrix.length;
-    const columnSums: number[] = new Array(n).fill(0);
 
+    const columnSums: number[] = new Array(n).fill(0);
     for (let j = 0; j < n; j++) {
       for (let i = 0; i < n; i++) {
         columnSums[j] += matrix[i][j];
@@ -230,14 +257,18 @@ export default function DataEntryPage() {
     for (let i = 0; i < n; i++) {
       normalizedMatrix.push([]);
       for (let j = 0; j < n; j++) {
-        normalizedMatrix[i][j] = matrix[i][j] / columnSums[j];
+        normalizedMatrix[i][j] =
+          columnSums[j] > 0 ? matrix[i][j] / columnSums[j] : 0;
       }
     }
 
     const priorities: Record<string, number> = {};
     for (let i = 0; i < n; i++) {
-      const rowSum = normalizedMatrix[i].reduce((sum, val) => sum + val, 0);
-      priorities[cityIds[i]] = rowSum / n;
+      let sum = 0;
+      for (let j = 0; j < n; j++) {
+        sum += normalizedMatrix[i][j];
+      }
+      priorities[cityIds[i]] = sum / n;
     }
 
     return { priorities, normalizedMatrix, matrix, cityIds };
@@ -245,37 +276,43 @@ export default function DataEntryPage() {
 
   const calculateConsistencyMetrics = () => {
     const { matrix, cityIds } = calculatePriceAhpMatrix();
-    const { priorities, normalizedMatrix } = calculatePricePriorities();
+    const { priorities } = calculatePricePriorities();
 
-    if (matrix.length === 0 || !priorities || !normalizedMatrix) {
+    if (matrix.length === 0 || !priorities) {
       return {
         lambda: 0,
         CI: 0,
         RI: 0,
         CR: 0,
+        weightedMatrix: [],
         weightedSums: [],
-        normalizedMatrix: [],
       };
     }
 
     const n = matrix.length;
-    const weightedSums: number[] = [];
 
+    const weightedMatrix: number[][] = [];
+    for (let i = 0; i < n; i++) {
+      weightedMatrix.push([]);
+      for (let j = 0; j < n; j++) {
+        const priority = priorities[cityIds[j]] || 0;
+        weightedMatrix[i][j] = matrix[i][j] * priority;
+      }
+    }
+
+    const weightedSums: number[] = [];
     for (let i = 0; i < n; i++) {
       let sum = 0;
       for (let j = 0; j < n; j++) {
-        const priority = priorities[cityIds[j]] || 0;
-        sum += matrix[i][j] * priority;
+        sum += weightedMatrix[i][j];
       }
-      weightedSums.push(sum);
+      const priority = priorities[cityIds[i]] || 0;
+      weightedSums.push(priority > 0 ? sum / priority : 0);
     }
 
     let lambda = 0;
     for (let i = 0; i < n; i++) {
-      const priority = priorities[cityIds[i]] || 0;
-      if (priority > 0) {
-        lambda += weightedSums[i] / priority;
-      }
+      lambda += weightedSums[i];
     }
     lambda = lambda / n;
 
@@ -297,7 +334,7 @@ export default function DataEntryPage() {
     const RI = RITable[n] || 1.12;
     const CR = RI > 0 ? CI / RI : 0;
 
-    return { lambda, CI, RI, CR, weightedSums, normalizedMatrix };
+    return { lambda, CI, RI, CR, weightedMatrix, weightedSums };
   };
 
   const getLogisticsScore = (cityId: string): number => {
@@ -1157,7 +1194,7 @@ export default function DataEntryPage() {
                                 {city.name}
                               </th>
                             ))}
-                            <th className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 bg-pink-100 dark:bg-pink-900/20">
+                            <th className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 bg-pink-100 dark:bg-pink-900/20 min-w-[120px]">
                               Prioridades
                             </th>
                           </tr>
@@ -1166,6 +1203,16 @@ export default function DataEntryPage() {
                           {project.cities.map((cityA, idxA) => {
                             const { priorities } = calculatePricePriorities();
                             const priority = priorities?.[cityA.id] || 0;
+
+                            const allPriorities = Object.values(
+                              priorities || {}
+                            );
+                            const maxPriority =
+                              allPriorities.length > 0
+                                ? Math.max(...allPriorities)
+                                : 0;
+                            const isMaxPriority =
+                              priority === maxPriority && priority > 0;
 
                             return (
                               <tr
@@ -1179,7 +1226,7 @@ export default function DataEntryPage() {
                                 <td className="px-4 py-3 font-medium text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 sticky left-0 bg-inherit z-10">
                                   {cityA.name}
                                 </td>
-                                {project.cities.map((cityB) => {
+                                {project.cities.map((cityB, idxB) => {
                                   if (cityA.id === cityB.id) {
                                     return (
                                       <td
@@ -1191,6 +1238,7 @@ export default function DataEntryPage() {
                                     );
                                   }
 
+                                  const isLowerTriangle = idxA > idxB;
                                   const savedAhpValue = getPriceAhpValue(
                                     cityA.id,
                                     cityB.id
@@ -1200,48 +1248,137 @@ export default function DataEntryPage() {
                                       ? savedAhpValue
                                       : null;
 
+                                  const inputKey = `${cityA.id}-${cityB.id}`;
+                                  const localInputValue = inputValues[inputKey];
+                                  const inputDisplayValue =
+                                    localInputValue !== undefined
+                                      ? localInputValue
+                                      : displayValue !== null &&
+                                        displayValue > 0
+                                      ? displayValue.toFixed(2)
+                                      : "";
+
+                                  if (isLowerTriangle) {
+                                    return (
+                                      <td
+                                        key={cityB.id}
+                                        className="px-4 py-3 border-r border-slate-200 dark:border-slate-800"
+                                      >
+                                        <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          placeholder="1"
+                                          className="w-full p-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-center text-sm"
+                                          value={inputDisplayValue}
+                                          onChange={(e) => {
+                                            const inputValue = e.target.value;
+
+                                            if (inputValue === "") {
+                                              setInputValues((prev) => ({
+                                                ...prev,
+                                                [inputKey]: "",
+                                              }));
+                                              return;
+                                            }
+
+                                            const regex = /^\d*\.?\d{0,2}$/;
+                                            if (regex.test(inputValue)) {
+                                              setInputValues((prev) => ({
+                                                ...prev,
+                                                [inputKey]: inputValue,
+                                              }));
+                                            }
+                                          }}
+                                          onBlur={(e) => {
+                                            const inputValue =
+                                              e.target.value.trim();
+
+                                            setInputValues((prev) => {
+                                              const newValues = { ...prev };
+                                              delete newValues[inputKey];
+                                              return newValues;
+                                            });
+
+                                            if (
+                                              inputValue === "" ||
+                                              inputValue === "." ||
+                                              inputValue === "-"
+                                            ) {
+                                              setPriceAhpValue(
+                                                cityA.id,
+                                                cityB.id,
+                                                0
+                                              );
+                                              return;
+                                            }
+
+                                            const numValue =
+                                              parseFloat(inputValue);
+
+                                            if (
+                                              !isNaN(numValue) &&
+                                              numValue >= 0.01 &&
+                                              numValue <= 9
+                                            ) {
+                                              const rounded =
+                                                Math.round(numValue * 100) /
+                                                100;
+                                              setPriceAhpValue(
+                                                cityA.id,
+                                                cityB.id,
+                                                rounded
+                                              );
+                                            } else {
+                                              setPriceAhpValue(
+                                                cityA.id,
+                                                cityB.id,
+                                                0
+                                              );
+                                            }
+                                          }}
+                                          onFocus={(e) => {
+                                            if (
+                                              displayValue !== null &&
+                                              displayValue > 0
+                                            ) {
+                                              setInputValues((prev) => ({
+                                                ...prev,
+                                                [inputKey]:
+                                                  displayValue.toFixed(2),
+                                              }));
+                                            }
+                                          }}
+                                        />
+                                      </td>
+                                    );
+                                  }
+
                                   return (
                                     <td
                                       key={cityB.id}
                                       className="px-4 py-3 border-r border-slate-200 dark:border-slate-800"
                                     >
                                       <input
-                                        type="number"
-                                        step="0.01"
-                                        min="0.11"
-                                        max="9"
-                                        placeholder="1"
-                                        className="w-full p-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-center text-sm"
+                                        type="text"
+                                        readOnly
+                                        className="w-full p-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-slate-600 dark:text-slate-400 text-center text-sm font-mono cursor-not-allowed"
                                         value={
                                           displayValue !== null &&
                                           displayValue > 0
-                                            ? displayValue.toFixed(3)
-                                            : ""
+                                            ? displayValue.toFixed(2)
+                                            : "-"
                                         }
-                                        onChange={(e) => {
-                                          const inputValue = e.target.value;
-                                          if (inputValue === "") {
-                                            setPriceAhpValue(
-                                              cityA.id,
-                                              cityB.id,
-                                              0
-                                            );
-                                            return;
-                                          }
-                                          const value = parseFloat(inputValue);
-                                          if (!isNaN(value) && value > 0) {
-                                            setPriceAhpValue(
-                                              cityA.id,
-                                              cityB.id,
-                                              value
-                                            );
-                                          }
-                                        }}
                                       />
                                     </td>
                                   );
                                 })}
-                                <td className="px-4 py-3 text-center font-bold text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-900/20">
+                                <td
+                                  className={`px-4 py-3 text-center font-bold ${
+                                    isMaxPriority
+                                      ? "text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/30"
+                                      : "text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-900/20"
+                                  }`}
+                                >
                                   {priority > 0 ? priority.toFixed(3) : "-"}
                                 </td>
                               </tr>
@@ -1278,14 +1415,21 @@ export default function DataEntryPage() {
                         </thead>
                         <tbody>
                           {(() => {
-                            const { normalizedMatrix, weightedSums } =
+                            const { weightedMatrix, weightedSums } =
                               calculateConsistencyMetrics();
                             const { priorities, matrix } =
                               calculatePricePriorities();
                             return project.cities.map((city, idx) => {
-                              const row = normalizedMatrix?.[idx] || [];
-                              const sum = weightedSums?.[idx] || 0;
+                              const row = weightedMatrix?.[idx] || [];
                               const priority = priorities?.[city.id] || 0;
+
+                              let rowSum = 0;
+                              for (let j = 0; j < row.length; j++) {
+                                rowSum += row[j];
+                              }
+
+                              const sumDividedByPriority =
+                                priority > 0 ? rowSum / priority : 0;
 
                               return (
                                 <tr
@@ -1300,24 +1444,19 @@ export default function DataEntryPage() {
                                     {city.name}
                                   </td>
                                   {row.map((value, colIdx) => {
-                                    const priority =
-                                      priorities?.[
-                                        project.cities[colIdx]?.id
-                                      ] || 0;
-                                    const weightedValue = value * priority;
                                     return (
                                       <td
                                         key={colIdx}
                                         className="px-4 py-3 text-center text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800"
                                       >
-                                        {weightedValue > 0
-                                          ? weightedValue.toFixed(3)
-                                          : "-"}
+                                        {value > 0 ? value.toFixed(3) : "-"}
                                       </td>
                                     );
                                   })}
                                   <td className="px-4 py-3 text-center font-bold text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800">
-                                    {sum > 0 ? sum.toFixed(3) : "-"}
+                                    {sumDividedByPriority > 0
+                                      ? sumDividedByPriority.toFixed(3)
+                                      : "-"}
                                   </td>
                                 </tr>
                               );
