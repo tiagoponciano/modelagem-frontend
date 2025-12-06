@@ -27,6 +27,7 @@ export default function MatrixPage() {
 
   useEffect(() => {
     if (pairs.length === 0) return;
+    if (currentPairIndex >= pairs.length) return;
     
     const [idA, idB] = pairs[currentPairIndex];
     const key = `${idA}-${idB}`;
@@ -34,8 +35,11 @@ export default function MatrixPage() {
     
     const value = project.criteriaMatrix[key];
     if (value !== undefined && value > 0) {
-      if (value >= 1) {
+      if (value === 1) {
         setSliderValue(0);
+      } else if (value > 1) {
+        const sliderPos = -((value - 1) / 2);
+        setSliderValue(Math.min(Math.max(Math.round(sliderPos), SLIDER_MIN), SLIDER_MAX));
       } else {
         const saaty = 1 / value;
         const sliderPos = (saaty - 1) / 2;
@@ -46,17 +50,21 @@ export default function MatrixPage() {
     
     const reverseValue = project.criteriaMatrix[reverseKey];
     if (reverseValue !== undefined && reverseValue > 0) {
-      if (reverseValue >= 1) {
-        const sliderPos = -((reverseValue - 1) / 2);
+      if (reverseValue === 1) {
+        setSliderValue(0);
+      } else if (reverseValue > 1) {
+        const sliderPos = (reverseValue - 1) / 2;
         setSliderValue(Math.min(Math.max(Math.round(sliderPos), SLIDER_MIN), SLIDER_MAX));
       } else {
-        setSliderValue(0);
+        const saaty = 1 / reverseValue;
+        const sliderPos = -(saaty - 1) / 2;
+        setSliderValue(Math.min(Math.max(Math.round(sliderPos), SLIDER_MIN), SLIDER_MAX));
       }
       return;
     }
     
     setSliderValue(0);
-  }, [currentPairIndex, pairs, project.criteriaMatrix]);
+  }, [currentPairIndex, pairs.length]);
 
 
   if (pairs.length === 0) {
@@ -94,10 +102,76 @@ export default function MatrixPage() {
     setCriteriaJudgment(idA, idB, value);
 
     if (currentPairIndex < pairs.length - 1) {
-      setSliderValue(0);
-      setCurrentPairIndex((prev) => prev + 1);
+      setCurrentPairIndex((prev) => {
+        const nextIndex = prev + 1;
+        const [nextIdA, nextIdB] = pairs[nextIndex];
+        const nextKey = `${nextIdA}-${nextIdB}`;
+        const nextReverseKey = `${nextIdB}-${nextIdA}`;
+        
+        const nextValue = project.criteriaMatrix[nextKey];
+        const nextReverseValue = project.criteriaMatrix[nextReverseKey];
+        
+        if (nextValue !== undefined && nextValue > 0) {
+          if (nextValue >= 1) {
+            setSliderValue(0);
+          } else {
+            const saaty = 1 / nextValue;
+            const sliderPos = (saaty - 1) / 2;
+            setSliderValue(Math.min(Math.max(Math.round(sliderPos), SLIDER_MIN), SLIDER_MAX));
+          }
+        } else if (nextReverseValue !== undefined && nextReverseValue > 0) {
+          if (nextReverseValue >= 1) {
+            const sliderPos = -((nextReverseValue - 1) / 2);
+            setSliderValue(Math.min(Math.max(Math.round(sliderPos), SLIDER_MIN), SLIDER_MAX));
+          } else {
+            setSliderValue(0);
+          }
+        } else {
+          setSliderValue(0);
+        }
+        
+        return nextIndex;
+      });
     } else {
-      navigate("/evaluation");
+      navigate("/data-entry?page=0");
+    }
+  };
+
+  const handlePrevious = () => {
+    const value = getSaatyValue(sliderValue);
+    setCriteriaJudgment(idA, idB, value);
+
+    if (currentPairIndex > 0) {
+      setCurrentPairIndex((prev) => {
+        const prevIndex = prev - 1;
+        const [prevIdA, prevIdB] = pairs[prevIndex];
+        const prevKey = `${prevIdA}-${prevIdB}`;
+        const prevReverseKey = `${prevIdB}-${prevIdA}`;
+        
+        const prevValue = project.criteriaMatrix[prevKey];
+        const prevReverseValue = project.criteriaMatrix[prevReverseKey];
+        
+        if (prevValue !== undefined && prevValue > 0) {
+          if (prevValue >= 1) {
+            setSliderValue(0);
+          } else {
+            const saaty = 1 / prevValue;
+            const sliderPos = (saaty - 1) / 2;
+            setSliderValue(Math.min(Math.max(Math.round(sliderPos), SLIDER_MIN), SLIDER_MAX));
+          }
+        } else if (prevReverseValue !== undefined && prevReverseValue > 0) {
+          if (prevReverseValue >= 1) {
+            const sliderPos = -((prevReverseValue - 1) / 2);
+            setSliderValue(Math.min(Math.max(Math.round(sliderPos), SLIDER_MIN), SLIDER_MAX));
+          } else {
+            setSliderValue(0);
+          }
+        } else {
+          setSliderValue(0);
+        }
+        
+        return prevIndex;
+      });
     }
   };
 
@@ -177,7 +251,12 @@ export default function MatrixPage() {
               max={SLIDER_MAX}
               step="1"
               value={sliderValue}
-              onChange={(e) => setSliderValue(parseInt(e.target.value))}
+              onChange={(e) => {
+                const newValue = parseInt(e.target.value);
+                setSliderValue(newValue);
+                const saatyValue = getSaatyValue(newValue);
+                setCriteriaJudgment(idA, idB, saatyValue);
+              }}
               className="w-full h-3 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-rose-600 hover:accent-rose-500"
             />
 
@@ -202,14 +281,24 @@ export default function MatrixPage() {
             <span>B muito +</span>
           </div>
 
-          <button
-            onClick={handleNext}
-            className="w-full sm:w-auto min-w-[200px] bg-slate-900 dark:bg-rose-600 hover:bg-slate-800 dark:hover:bg-rose-500 text-white text-lg px-8 py-4 rounded-xl font-bold transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:translate-y-0"
-          >
-            {currentPairIndex < pairs.length - 1
-              ? "Próxima Comparação"
-              : "Finalizar Análise"}
-          </button>
+          <div className="flex gap-4 justify-center">
+            {currentPairIndex > 0 && (
+              <button
+                onClick={handlePrevious}
+                className="min-w-[150px] bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-900 dark:text-white text-lg px-6 py-4 rounded-xl font-bold transition-all shadow-lg hover:shadow-xl hover:-translate-y-1 active:translate-y-0"
+              >
+                ← Anterior
+              </button>
+            )}
+            <button
+              onClick={handleNext}
+              className="min-w-[200px] bg-slate-900 dark:bg-rose-600 hover:bg-slate-800 dark:hover:bg-rose-500 text-white text-lg px-8 py-4 rounded-xl font-bold transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:translate-y-0"
+            >
+              {currentPairIndex < pairs.length - 1
+                ? "Próxima Comparação →"
+                : "Finalizar Análise →"}
+            </button>
+          </div>
 
           <div className="mt-4 text-xs text-slate-400 uppercase tracking-widest">
             Comparação {currentPairIndex + 1} de {pairs.length}

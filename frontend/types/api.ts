@@ -3,6 +3,7 @@ import type {
   Criterion,
   EvaluationValues,
   CriteriaConfig,
+  CriterionFieldValues,
 } from "../store/useDecisionStore";
 
 export interface ProjectSummary {
@@ -29,6 +30,7 @@ export interface Project {
   criteriaMatrix?: Record<string, number>;
   evaluationValues?: EvaluationValues;
   criteriaConfig?: CriteriaConfig;
+  criterionFieldValues?: CriterionFieldValues;
   originalData?: {
     title?: string;
     cities?: Option[];
@@ -41,6 +43,12 @@ export interface Project {
     ranking: RankingItem[];
     criteriaWeights: Record<string, number>;
     matrixRaw?: number[][];
+    lambdaMax?: number;
+    consistencyIndex?: number;
+    consistencyRatio?: number;
+    randomIndex?: number;
+    isConsistent?: boolean;
+    eigenvector?: number[];
   };
   createdAt?: string;
   updatedAt?: string;

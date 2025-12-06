@@ -5,9 +5,19 @@ export interface Option {
   name: string;
 }
 
+export interface CriterionField {
+  id: string;
+  name: string;
+  type: "number" | "text" | "currency" | "percentage";
+  unit?: string;
+  question?: string;
+}
+
 export interface Criterion {
   id: string;
   name: string;
+  fields?: CriterionField[];
+  type?: "BENEFIT" | "COST";
 }
 
 export type CriterionType = "BENEFIT" | "COST";
@@ -16,6 +26,8 @@ export type EvaluationValues = Record<string, number>;
 
 export type CriteriaConfig = Record<string, CriterionType>;
 
+export type CriterionFieldValues = Record<string, Record<string, number | string>>;
+
 interface Project {
   title: string;
   cities: Option[];
@@ -23,6 +35,7 @@ interface Project {
   criteriaMatrix: Record<string, number>;
   evaluationValues: EvaluationValues;
   criteriaConfig: CriteriaConfig;
+  criterionFieldValues?: CriterionFieldValues;
 }
 
 interface DecisionStore {
@@ -42,6 +55,13 @@ interface DecisionStore {
     value: number
   ) => void;
   setCriterionType: (criterionId: string, type: CriterionType) => void;
+  updateCriterion: (criterionId: string, updates: Partial<Criterion>) => void;
+  setCriterionFieldValue: (
+    cityId: string,
+    criterionId: string,
+    fieldKey: string,
+    value: number | string
+  ) => void;
 
   resetProject: () => void;
   loadProject: (
@@ -65,6 +85,7 @@ export const useDecisionStore = create<DecisionStore>((set) => ({
     criteriaMatrix: {},
     evaluationValues: {},
     criteriaConfig: {},
+    criterionFieldValues: {},
   },
   editingProjectId: null,
 
@@ -133,6 +154,33 @@ export const useDecisionStore = create<DecisionStore>((set) => ({
       },
     })),
 
+  updateCriterion: (criterionId, updates) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        criteria: state.project.criteria.map((c) =>
+          c.id === criterionId ? { ...c, ...updates } : c
+        ),
+      },
+    })),
+
+  setCriterionFieldValue: (cityId, criterionId, fieldKey, value) =>
+    set((state) => {
+      const key = `${cityId}-${criterionId}`;
+      return {
+        project: {
+          ...state.project,
+          criterionFieldValues: {
+            ...state.project.criterionFieldValues,
+            [key]: {
+              ...state.project.criterionFieldValues?.[key],
+              [fieldKey]: value,
+            },
+          },
+        },
+      };
+    }),
+
   resetProject: () =>
     set({
       project: {
@@ -142,6 +190,7 @@ export const useDecisionStore = create<DecisionStore>((set) => ({
         criteriaMatrix: {},
         evaluationValues: {},
         criteriaConfig: {},
+        criterionFieldValues: {},
       },
       editingProjectId: null,
     }),
@@ -155,6 +204,7 @@ export const useDecisionStore = create<DecisionStore>((set) => ({
         criteriaMatrix: projectData.criteriaMatrix || {},
         evaluationValues: projectData.evaluationValues || {},
         criteriaConfig: projectData.criteriaConfig || {},
+        criterionFieldValues: projectData.criterionFieldValues || {},
       },
       editingProjectId: projectId || null,
     }),
