@@ -13,6 +13,12 @@ export interface CriterionField {
   question?: string;
 }
 
+export interface SubCriterion {
+  id: string;
+  name: string;
+  criterionId: string;
+}
+
 export interface Criterion {
   id: string;
   name: string;
@@ -32,6 +38,7 @@ interface Project {
   title: string;
   cities: Option[];
   criteria: Criterion[];
+  subCriteria: SubCriterion[];
   criteriaMatrix: Record<string, number>;
   evaluationValues: EvaluationValues;
   criteriaConfig: CriteriaConfig;
@@ -47,6 +54,8 @@ interface DecisionStore {
   removeCity: (id: string) => void;
   addCriterion: (criterion: Criterion) => void;
   removeCriterion: (id: string) => void;
+  addSubCriterion: (criterionId: string, name: string) => void;
+  removeSubCriterion: (subCriterionId: string) => void;
 
   setCriteriaJudgment: (idA: string, idB: string, value: number) => void;
   setEvaluationValue: (
@@ -69,6 +78,7 @@ interface DecisionStore {
       title: string;
       cities?: Option[];
       criteria?: Criterion[];
+      subCriteria?: SubCriterion[];
       criteriaMatrix?: Record<string, number>;
       evaluationValues?: EvaluationValues;
       criteriaConfig?: CriteriaConfig;
@@ -82,6 +92,7 @@ export const useDecisionStore = create<DecisionStore>((set) => ({
     title: "",
     cities: [],
     criteria: [],
+    subCriteria: [],
     criteriaMatrix: {},
     evaluationValues: {},
     criteriaConfig: {},
@@ -118,6 +129,32 @@ export const useDecisionStore = create<DecisionStore>((set) => ({
       project: {
         ...state.project,
         criteria: state.project.criteria.filter((c) => c.id !== id),
+        subCriteria: state.project.subCriteria?.filter((sc) => sc.criterionId !== id) || [],
+      },
+    })),
+
+  addSubCriterion: (criterionId, name) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        subCriteria: [
+          ...(state.project.subCriteria || []),
+          {
+            id: crypto.randomUUID(),
+            name,
+            criterionId,
+          },
+        ],
+      },
+    })),
+
+  removeSubCriterion: (subCriterionId) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        subCriteria: (state.project.subCriteria || []).filter(
+          (sc) => sc.id !== subCriterionId
+        ),
       },
     })),
 
@@ -166,7 +203,7 @@ export const useDecisionStore = create<DecisionStore>((set) => ({
 
   setCriterionFieldValue: (cityId, criterionId, fieldKey, value) =>
     set((state) => {
-      const key = `${cityId}-${criterionId}`;
+      const key = criterionId === "" ? cityId : `${cityId}-${criterionId}`;
       return {
         project: {
           ...state.project,
@@ -187,6 +224,7 @@ export const useDecisionStore = create<DecisionStore>((set) => ({
         title: "",
         cities: [],
         criteria: [],
+        subCriteria: [],
         criteriaMatrix: {},
         evaluationValues: {},
         criteriaConfig: {},
@@ -201,6 +239,7 @@ export const useDecisionStore = create<DecisionStore>((set) => ({
         title: projectData.title || "",
         cities: projectData.cities || [],
         criteria: projectData.criteria || [],
+        subCriteria: projectData.subCriteria || [],
         criteriaMatrix: projectData.criteriaMatrix || {},
         evaluationValues: projectData.evaluationValues || {},
         criteriaConfig: projectData.criteriaConfig || {},

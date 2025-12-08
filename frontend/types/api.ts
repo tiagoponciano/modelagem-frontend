@@ -1,6 +1,7 @@
 import type {
   Option,
   Criterion,
+  SubCriterion,
   EvaluationValues,
   CriteriaConfig,
   CriterionFieldValues,
@@ -27,6 +28,7 @@ export interface Project {
   title: string;
   cities?: Option[];
   criteria?: Criterion[];
+  subCriteria?: SubCriterion[];
   criteriaMatrix?: Record<string, number>;
   evaluationValues?: EvaluationValues;
   criteriaConfig?: CriteriaConfig;
@@ -49,6 +51,7 @@ export interface Project {
     randomIndex?: number;
     isConsistent?: boolean;
     eigenvector?: number[];
+    calculationResults?: any;
   };
   createdAt?: string;
   updatedAt?: string;

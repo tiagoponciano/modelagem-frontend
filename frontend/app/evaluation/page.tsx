@@ -82,7 +82,7 @@ export default function EvaluationPage() {
       <div className="w-full max-w-5xl relative z-10">
         <div className="flex items-center justify-between mb-8 px-2">
           <button
-            onClick={() => navigate("/matrix")}
+            onClick={() => navigate("/criteria")}
             className="group flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 transition-colors"
           >
             &larr; Voltar
