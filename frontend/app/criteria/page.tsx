@@ -26,7 +26,7 @@ export default function CriteriaPage() {
       );
       return;
     }
-    navigate("/matrix");
+    navigate("/data-entry?page=0");
   };
 
   return (
@@ -51,7 +51,7 @@ export default function CriteriaPage() {
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-purple-600 dark:bg-purple-400"></span>
             <span className="text-xs font-bold tracking-widest text-purple-600 dark:text-purple-400 uppercase">
-              Passo 2 de 3
+              Passo 2 de 2
             </span>
           </div>
         </div>

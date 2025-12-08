@@ -4,8 +4,9 @@ import { useDecisionStore } from "../../store/useDecisionStore";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import { useNavigation } from "../../hooks/useNavigation";
 import { useCreateProject, useUpdateProject } from "../../hooks/useProjects";
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import { API_ENDPOINTS } from "../../lib/constants";
 
 interface Warehouse {
   id: string;
@@ -18,22 +19,61 @@ interface Port {
 }
 
 const DATA_PAGES = [
-  { id: "price-per-m2", name: "Preço por m²", type: "price" },
-  { id: "logistics-security", name: "Logística e Segurança", type: "score" },
-  { id: "port-distance", name: "Distância até o Porto", type: "distance" },
+  {
+    id: "criteria-priorities",
+    name: "Prioridades dos Critérios",
+    type: "criteria-priorities",
+  },
+  {
+    id: "decision-final",
+    name: "Decisão Final",
+    type: "decision-final",
+  },
 ];
 
 export default function DataEntryPage() {
   const searchParams = useSearchParams();
   const { navigate } = useNavigation();
-  const { project, editingProjectId, setCriterionFieldValue } =
-    useDecisionStore();
+  const {
+    project,
+    editingProjectId,
+    setCriterionFieldValue,
+    setCriteriaJudgment,
+    addSubCriterion,
+    removeSubCriterion,
+  } = useDecisionStore();
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
 
   const pageParam = searchParams.get("page");
+  const criterionIdParam = searchParams.get("criterion");
+
   const pageIndex = pageParam ? Math.max(0, parseInt(pageParam, 10)) : 0;
-  const currentPage = DATA_PAGES[pageIndex];
+
+  const totalPages = 2 + project.criteria.length; // prioridades + critérios + decisão final
+
+  const isDecisionPage = pageIndex === totalPages - 1;
+  const criterionPageIndex =
+    pageIndex > 0 && !isDecisionPage ? pageIndex - 1 : -1;
+  const currentCriterionByIndex =
+    criterionPageIndex >= 0 && criterionPageIndex < project.criteria.length
+      ? project.criteria[criterionPageIndex]
+      : null;
+
+  const currentPage =
+    pageIndex === 0
+      ? DATA_PAGES[0]
+      : isDecisionPage
+      ? DATA_PAGES[1]
+      : {
+          id: currentCriterionByIndex?.id || "criterion-page",
+          name: currentCriterionByIndex?.name || "Critério",
+          type: "criterion",
+        };
+
+  const currentCriterion = criterionIdParam
+    ? project.criteria.find((c) => c.id === criterionIdParam)
+    : null;
 
   const [warehousesByCity, setWarehousesByCity] = useState<
     Record<string, Warehouse[]>
@@ -58,6 +98,69 @@ export default function DataEntryPage() {
 
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
 
+  const [calculationResults, setCalculationResults] = useState<any>(null);
+  const [isCalculating, setIsCalculating] = useState(false);
+
+  const calculateInRealTime = async () => {
+    if (project.criteria.length < 2 || project.cities.length < 2) {
+      return;
+    }
+
+    setIsCalculating(true);
+    try {
+      const response = await fetch(API_ENDPOINTS.CALCULATE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: project.title,
+          cities: project.cities,
+          criteria: project.criteria,
+          subCriteria: project.subCriteria || [],
+          criteriaMatrix: project.criteriaMatrix,
+          criterionFieldValues: project.criterionFieldValues || {},
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Dados recebidos do backend:", data);
+        console.log(
+          "criteriaConsistency:",
+          data.calculationResults?.criteriaConsistency
+        );
+        setCalculationResults(data.calculationResults);
+      } else {
+        console.error(
+          "Erro na resposta:",
+          response.status,
+          response.statusText
+        );
+        const errorText = await response.text();
+        console.error("Erro detalhado:", errorText);
+      }
+    } catch (error) {
+      console.error("Erro ao calcular:", error);
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (Object.keys(project.criteriaMatrix || {}).length > 0) {
+        calculateInRealTime();
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [
+    project.criteriaMatrix,
+    project.criteria,
+    project.cities,
+    project.subCriteria,
+    project.criterionFieldValues,
+  ]);
+
   if (!currentPage) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
@@ -66,27 +169,49 @@ export default function DataEntryPage() {
             Página não encontrada.
           </p>
           <button
-            onClick={() => navigate("/matrix")}
+            onClick={() => navigate("/criteria")}
             className="text-emerald-600 dark:text-emerald-400 hover:underline font-medium"
           >
-            Voltar para matrix
+            Voltar para critérios
           </button>
         </div>
       </div>
     );
   }
 
-  const addWarehouse = (cityId: string) => {
+  const addWarehouse = () => {
+    setWarehousesByCity((prev) => {
+      const updated: Record<string, Warehouse[]> = {};
+
+      project.cities.forEach((city) => {
+        const cityWarehouses = prev[city.id] || [];
+        const maxWarehouses = Math.max(
+          ...project.cities.map((c) => (prev[c.id] || []).length),
+          cityWarehouses.length
+        );
+        const newWarehouse: Warehouse = {
+          id: crypto.randomUUID(),
+          name: `Galpão ${maxWarehouses + 1}`,
+        };
+        updated[city.id] = [...cityWarehouses, newWarehouse];
+      });
+
+      return updated;
+    });
+  };
+
+  const removeWarehouse = (cityId: string, warehouseId: string) => {
     setWarehousesByCity((prev) => {
       const cityWarehouses = prev[cityId] || [];
-      const newWarehouse: Warehouse = {
-        id: crypto.randomUUID(),
-        name: `Galpão ${cityWarehouses.length + 1}`,
-      };
-      return {
-        ...prev,
-        [cityId]: [...cityWarehouses, newWarehouse],
-      };
+      const filtered = cityWarehouses.filter((w) => w.id !== warehouseId);
+
+      const updated = { ...prev };
+      updated[cityId] = filtered.map((w, idx) => ({
+        ...w,
+        name: `Galpão ${idx + 1}`,
+      }));
+
+      return updated;
     });
   };
 
@@ -204,137 +329,139 @@ export default function DataEntryPage() {
     );
   };
 
-  const calculatePriceAhpMatrix = () => {
-    const matrix: number[][] = [];
-    const cityIds = project.cities.map((c) => c.id);
+  const getCriteriaAhpValue = (
+    criterionAId: string,
+    criterionBId: string
+  ): number | null => {
+    const key = `${criterionAId}-${criterionBId}`;
+    const reverseKey = `${criterionBId}-${criterionAId}`;
+    const value = project.criteriaMatrix[key];
+    const reverseValue = project.criteriaMatrix[reverseKey];
 
-    project.cities.forEach((cityA, idxA) => {
-      const row: number[] = [];
-      project.cities.forEach((cityB, idxB) => {
-        if (cityA.id === cityB.id) {
-          row.push(1);
-        } else {
-          const isUpperTriangle = idxA < idxB;
-          const value = getPriceAhpValue(cityA.id, cityB.id);
-
-          if (value !== null && value !== undefined) {
-            row.push(value);
-          } else if (!isUpperTriangle) {
-            const reverseValue = getPriceAhpValue(cityB.id, cityA.id);
-            if (reverseValue !== null && reverseValue > 0) {
-              row.push(1 / reverseValue);
-            } else {
-              row.push(1);
-            }
-          } else {
-            row.push(1);
-          }
-        }
-      });
-      matrix.push(row);
-    });
-
-    return { matrix, cityIds };
+    if (value !== undefined && value > 0) {
+      return value;
+    }
+    if (reverseValue !== undefined && reverseValue > 0) {
+      return 1 / reverseValue;
+    }
+    return null;
   };
 
-  const calculatePricePriorities = () => {
-    const { matrix, cityIds } = calculatePriceAhpMatrix();
+  const setCriteriaAhpValue = (
+    criterionAId: string,
+    criterionBId: string,
+    value: number
+  ) => {
+    if (criterionAId === criterionBId) return;
 
-    if (matrix.length === 0) {
-      return {};
+    if (value === 0 || isNaN(value)) {
+      setCriteriaJudgment(criterionAId, criterionBId, 0);
+      setCriteriaJudgment(criterionBId, criterionAId, 0);
+      return;
     }
 
-    const n = matrix.length;
+    const roundedValue = Math.round(value * 100) / 100;
+    setCriteriaJudgment(criterionAId, criterionBId, roundedValue);
 
-    const columnSums: number[] = new Array(n).fill(0);
-    for (let j = 0; j < n; j++) {
-      for (let i = 0; i < n; i++) {
-        columnSums[j] += matrix[i][j];
-      }
-    }
-
-    const normalizedMatrix: number[][] = [];
-    for (let i = 0; i < n; i++) {
-      normalizedMatrix.push([]);
-      for (let j = 0; j < n; j++) {
-        normalizedMatrix[i][j] =
-          columnSums[j] > 0 ? matrix[i][j] / columnSums[j] : 0;
-      }
-    }
-
-    const priorities: Record<string, number> = {};
-    for (let i = 0; i < n; i++) {
-      let sum = 0;
-      for (let j = 0; j < n; j++) {
-        sum += normalizedMatrix[i][j];
-      }
-      priorities[cityIds[i]] = sum / n;
-    }
-
-    return { priorities, normalizedMatrix, matrix, cityIds };
+    const reciprocalValue = Math.round((1 / roundedValue) * 100) / 100;
+    setCriteriaJudgment(criterionBId, criterionAId, reciprocalValue);
   };
 
-  const calculateConsistencyMetrics = () => {
-    const { matrix, cityIds } = calculatePriceAhpMatrix();
-    const { priorities } = calculatePricePriorities();
+  const getSubCriterionAhpValue = (
+    subCriterionId: string,
+    cityAId: string,
+    cityBId: string
+  ): number | null => {
+    const key = `${subCriterionId}-${cityAId}-${cityBId}`;
+    const reverseKey = `${subCriterionId}-${cityBId}-${cityAId}`;
+    const value = project.criterionFieldValues?.[key]?.["ahp-value"];
+    const reverseValue =
+      project.criterionFieldValues?.[reverseKey]?.["ahp-value"];
 
-    if (matrix.length === 0 || !priorities) {
-      return {
-        lambda: 0,
-        CI: 0,
-        RI: 0,
-        CR: 0,
-        weightedMatrix: [],
-        weightedSums: [],
-      };
+    if (typeof value === "number" && value > 0) {
+      return value;
+    }
+    if (typeof reverseValue === "number" && reverseValue > 0) {
+      return 1 / reverseValue;
+    }
+    return null;
+  };
+
+  const setSubCriterionAhpValue = (
+    subCriterionId: string,
+    cityAId: string,
+    cityBId: string,
+    value: number
+  ) => {
+    if (cityAId === cityBId) return;
+
+    const keyA = `${subCriterionId}-${cityAId}-${cityBId}`;
+    const keyB = `${subCriterionId}-${cityBId}-${cityAId}`;
+
+    if (value === 0 || isNaN(value)) {
+      setCriterionFieldValue(keyA, "", "ahp-value", 0);
+      setCriterionFieldValue(keyB, "", "ahp-value", 0);
+      return;
     }
 
-    const n = matrix.length;
+    const roundedValue = Math.round(value * 100) / 100;
+    setCriterionFieldValue(keyA, "", "ahp-value", roundedValue);
 
-    const weightedMatrix: number[][] = [];
-    for (let i = 0; i < n; i++) {
-      weightedMatrix.push([]);
-      for (let j = 0; j < n; j++) {
-        const priority = priorities[cityIds[j]] || 0;
-        weightedMatrix[i][j] = matrix[i][j] * priority;
-      }
+    const reciprocalValue = Math.round((1 / roundedValue) * 100) / 100;
+    setCriterionFieldValue(keyB, "", "ahp-value", reciprocalValue);
+  };
+
+  const getSubCriterionTitle = (subCriterionId: string): string => {
+    const key = `title-${subCriterionId}`;
+    const value = project.criterionFieldValues?.[key]?.["title"];
+    return typeof value === "string" ? value : "";
+  };
+
+  const getSubCriterion = (subCriterionId: string) => {
+    return (project.subCriteria || []).find((sc) => sc.id === subCriterionId);
+  };
+
+  const setSubCriterionTitle = (subCriterionId: string, title: string) => {
+    const key = `title-${subCriterionId}`;
+    setCriterionFieldValue(key, "title", "title", title);
+  };
+
+  // --- Pesos entre subcritérios (AHP local do critério) ---
+  const getSubWeightValue = (
+    criterionId: string,
+    subAId: string,
+    subBId: string
+  ): number | null => {
+    const key = `${criterionId}-${subAId}-${subBId}`;
+    const reverseKey = `${criterionId}-${subBId}-${subAId}`;
+    const value = project.criterionFieldValues?.[key]?.["subw"];
+    const reverseValue = project.criterionFieldValues?.[reverseKey]?.["subw"];
+    if (typeof value === "number" && value > 0) return value;
+    if (typeof reverseValue === "number" && reverseValue > 0)
+      return 1 / reverseValue;
+    return null;
+  };
+
+  const setSubWeightValue = (
+    criterionId: string,
+    subAId: string,
+    subBId: string,
+    value: number
+  ) => {
+    if (subAId === subBId) return;
+
+    const keyA = `${criterionId}-${subAId}-${subBId}`;
+    const keyB = `${criterionId}-${subBId}-${subAId}`;
+
+    if (value === 0 || isNaN(value)) {
+      setCriterionFieldValue(keyA, "", "subw", 0);
+      setCriterionFieldValue(keyB, "", "subw", 0);
+      return;
     }
-
-    const weightedSums: number[] = [];
-    for (let i = 0; i < n; i++) {
-      let sum = 0;
-      for (let j = 0; j < n; j++) {
-        sum += weightedMatrix[i][j];
-      }
-      const priority = priorities[cityIds[i]] || 0;
-      weightedSums.push(priority > 0 ? sum / priority : 0);
-    }
-
-    let lambda = 0;
-    for (let i = 0; i < n; i++) {
-      lambda += weightedSums[i];
-    }
-    lambda = lambda / n;
-
-    const CI = (lambda - n) / (n - 1);
-
-    const RITable: Record<number, number> = {
-      1: 0,
-      2: 0,
-      3: 0.58,
-      4: 0.9,
-      5: 1.12,
-      6: 1.24,
-      7: 1.32,
-      8: 1.41,
-      9: 1.45,
-      10: 1.49,
-    };
-
-    const RI = RITable[n] || 1.12;
-    const CR = RI > 0 ? CI / RI : 0;
-
-    return { lambda, CI, RI, CR, weightedMatrix, weightedSums };
+    const rounded = Math.round(value * 100) / 100;
+    setCriterionFieldValue(keyA, "", "subw", rounded);
+    const reciprocal = Math.round((1 / rounded) * 100) / 100;
+    setCriterionFieldValue(keyB, "", "subw", reciprocal);
   };
 
   const getLogisticsScore = (cityId: string): number => {
@@ -491,127 +618,47 @@ export default function DataEntryPage() {
   };
 
   const handleNext = () => {
-    if (pageIndex < DATA_PAGES.length - 1) {
-      navigate(`/data-entry?page=${pageIndex + 1}`);
+    if (isDecisionPage) return;
+
+    if (pageIndex === 0) {
+      if (project.criteria.length > 0) {
+        navigate(`/data-entry?page=1`);
+      } else {
+        alert("Adicione pelo menos um critério para continuar.");
+        navigate("/criteria");
+      }
+      return;
     }
+
+    const criterionIndex = pageIndex - 1;
+    // Se ainda há critérios pela frente
+    if (criterionIndex < project.criteria.length - 1) {
+      navigate(`/data-entry?page=${pageIndex + 1}`);
+      return;
+    }
+
+    // Depois do último critério, vai para decisão final
+    navigate(`/data-entry?page=${totalPages - 1}`);
   };
 
   const handlePrevious = () => {
     if (pageIndex > 0) {
       navigate(`/data-entry?page=${pageIndex - 1}`);
     } else {
-      navigate("/matrix");
+      navigate("/criteria");
     }
   };
+
+  const isLastPage =
+    project.criteria.length > 0
+      ? pageIndex === totalPages - 1
+      : pageIndex === 0;
 
   const handleFinish = async () => {
     if (project.criteria.length === 0 || project.cities.length === 0) {
       alert("Erro: Defina pelo menos 2 opções e 2 critérios.");
       return;
     }
-
-    const evaluationValues: Record<string, number> = {};
-    const updatedFieldValues = { ...project.criterionFieldValues };
-
-    project.cities.forEach((city) => {
-      project.criteria.forEach((crit) => {
-        const key = `${city.id}-${crit.id}`;
-
-        if (currentPage.type === "price") {
-          const warehouses = warehousesByCity[city.id] || [];
-          const averages = calculateCityAverages(city.id);
-
-          const priceCriterion = project.criteria.find(
-            (c) =>
-              c.name.toLowerCase().includes("preço") ||
-              c.name.toLowerCase().includes("preco") ||
-              c.name.toLowerCase().includes("custo")
-          );
-
-          if (priceCriterion && crit.id === priceCriterion.id) {
-            const { priorities } = calculatePricePriorities();
-            const priority = priorities?.[city.id] || 0;
-            evaluationValues[key] =
-              priority > 0 ? priority : averages.pricePerM2;
-            const cityKey = `${city.id}-${currentPage.id}`;
-            if (!updatedFieldValues[cityKey]) {
-              updatedFieldValues[cityKey] = {};
-            }
-
-            project.cities.forEach((otherCity) => {
-              if (city.id !== otherCity.id) {
-                const ahpValue = getPriceAhpValue(city.id, otherCity.id);
-                if (ahpValue !== null && ahpValue > 0) {
-                  updatedFieldValues[cityKey][`ahp-price-${otherCity.id}`] =
-                    ahpValue;
-                }
-              }
-            });
-            updatedFieldValues[cityKey]["average-aluguel"] = averages.aluguel;
-            updatedFieldValues[cityKey]["average-m2"] = averages.m2;
-            updatedFieldValues[cityKey]["average-pricePerM2"] =
-              averages.pricePerM2;
-          }
-        } else if (currentPage.type === "score") {
-          const score = getLogisticsScore(city.id);
-
-          const logisticsCriterion = project.criteria.find(
-            (c) =>
-              c.name.toLowerCase().includes("logística") ||
-              c.name.toLowerCase().includes("logistica") ||
-              c.name.toLowerCase().includes("segurança") ||
-              c.name.toLowerCase().includes("seguranca")
-          );
-
-          if (logisticsCriterion && crit.id === logisticsCriterion.id) {
-            evaluationValues[key] = score;
-            const cityKey = `${city.id}-${currentPage.id}`;
-            if (!updatedFieldValues[cityKey]) {
-              updatedFieldValues[cityKey] = {};
-            }
-            updatedFieldValues[cityKey]["score"] = score;
-          }
-        } else if (currentPage.type === "distance") {
-          const distanceCriterion = project.criteria.find(
-            (c) =>
-              c.name.toLowerCase().includes("distância") ||
-              c.name.toLowerCase().includes("distancia") ||
-              c.name.toLowerCase().includes("porto")
-          );
-
-          if (distanceCriterion && crit.id === distanceCriterion.id) {
-            ports.forEach((port) => {
-              const priorities = calculatePriorityFromDistance(port.id);
-              const priority = priorities[city.id] || 0;
-
-              const cityKey = `${city.id}-${currentPage.id}`;
-              if (!updatedFieldValues[cityKey]) {
-                updatedFieldValues[cityKey] = {};
-              }
-
-              const distance = getDistance(city.id, port.id);
-              updatedFieldValues[cityKey][`distance-${port.id}`] = distance;
-              updatedFieldValues[cityKey][`priority-${port.id}`] = priority;
-
-              project.cities.forEach((otherCity) => {
-                if (city.id !== otherCity.id) {
-                  const ahpValue = getAhpValue(city.id, otherCity.id, port.id);
-                  if (ahpValue > 0) {
-                    updatedFieldValues[cityKey][
-                      `ahp-${port.id}-${otherCity.id}`
-                    ] = ahpValue;
-                  }
-                }
-              });
-            });
-
-            const mainPriorities = calculatePriorityFromDistance(ports[0].id);
-            const mainPriority = mainPriorities[city.id] || 0;
-            evaluationValues[key] = mainPriority;
-          }
-        }
-      });
-    });
 
     try {
       let data;
@@ -622,17 +669,21 @@ export default function DataEntryPage() {
             title: project.title,
             cities: project.cities,
             criteria: project.criteria,
+            subCriteria: project.subCriteria || [],
             criteriaMatrix: project.criteriaMatrix,
-            evaluationValues,
             criteriaConfig: project.criteriaConfig,
-            criterionFieldValues: updatedFieldValues,
+            criterionFieldValues: project.criterionFieldValues || {},
           },
         });
       } else {
         data = await createProject.mutateAsync({
-          ...project,
-          evaluationValues,
-          criterionFieldValues: updatedFieldValues,
+          title: project.title,
+          cities: project.cities,
+          criteria: project.criteria,
+          subCriteria: project.subCriteria || [],
+          criteriaMatrix: project.criteriaMatrix,
+          criteriaConfig: project.criteriaConfig,
+          criterionFieldValues: project.criterionFieldValues || {},
         });
       }
       navigate(`/results/${data.id}`);
@@ -640,17 +691,15 @@ export default function DataEntryPage() {
       const errorMessage =
         error instanceof Error
           ? error.message
-          : "Houve um erro no cálculo. Verifique o console do backend.";
+          : "Houve um erro ao salvar. Verifique o console do backend.";
       alert(errorMessage);
     }
   };
 
-  const isLastPage = pageIndex === DATA_PAGES.length - 1;
-
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col py-6 px-4 relative overflow-hidden transition-colors duration-300">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-emerald-200/20 dark:bg-emerald-900/10 blur-[100px] rounded-full pointer-events-none" />
-      <div className="absolute top-6 right-6 z-10">
+      <div className="absolute top-6 right-6 z-[99999]">
         <ThemeToggle />
       </div>
 
@@ -664,10 +713,12 @@ export default function DataEntryPage() {
           </button>
           <div className="flex items-center gap-4">
             <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-              Página {pageIndex + 1} de {DATA_PAGES.length}
+              Página {pageIndex + 1} de {totalPages}
             </span>
             <span className="text-xs font-bold tracking-widest text-emerald-600 dark:text-emerald-400 uppercase">
-              {currentPage.name}
+              {currentCriterionByIndex
+                ? currentCriterionByIndex.name
+                : currentPage.name}
             </span>
           </div>
         </div>
@@ -678,11 +729,11 @@ export default function DataEntryPage() {
               {project.title || "Projeto sem nome"}
             </h1>
             <p className="text-slate-500 dark:text-slate-400 text-sm">
-              {currentPage.type === "score"
-                ? "Avalie cada cidade com uma nota de 1 a 5 conforme a legenda abaixo."
-                : currentPage.type === "distance"
-                ? "Preencha os dados de distância até o porto para cada cidade."
-                : "Preencha os dados para cada cidade. O preço por m² será calculado automaticamente."}
+              {currentPage.type === "criteria-priorities"
+                ? "Compare os critérios entre si usando a escala Saaty (1/9 a 9). Preencha a matriz AHP manualmente."
+                : currentCriterionByIndex
+                ? `Adicione subcritérios para ${currentCriterionByIndex.name} e preencha as matrizes AHP comparando as cidades.`
+                : ""}
             </p>
             {currentPage.type === "score" && (
               <div className="mt-4 p-4 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
@@ -710,7 +761,1362 @@ export default function DataEntryPage() {
             )}
           </div>
 
-          {project.cities.length === 0 ? (
+          {project.criteria.length < 2 ? (
+            <div className="flex-1 flex items-center justify-center p-12">
+              <div className="text-center">
+                <p className="text-slate-500 dark:text-slate-400 mb-4">
+                  Adicione pelo menos 2 critérios para continuar.
+                </p>
+                <button
+                  onClick={() => navigate("/criteria")}
+                  className="text-emerald-600 dark:text-emerald-400 hover:underline font-medium"
+                >
+                  Voltar para critérios
+                </button>
+              </div>
+            </div>
+          ) : currentPage.type === "criteria-priorities" ? (
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4">
+                  Matriz de Comparação AHP - Critérios
+                </h2>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                  Preencha a matriz AHP manualmente usando a escala Saaty (1/9 a
+                  9). Compare os critérios entre si.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead className="bg-slate-100 dark:bg-slate-950/50">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-blue-100 dark:bg-blue-900/20 sticky left-0 z-10">
+                          Critérios
+                        </th>
+                        {project.criteria.map((criterion) => (
+                          <th
+                            key={criterion.id}
+                            className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-blue-100 dark:bg-blue-900/20 min-w-[120px]"
+                          >
+                            {criterion.name}
+                          </th>
+                        ))}
+                        <th className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 bg-pink-100 dark:bg-pink-900/20 min-w-[120px]">
+                          Prioridades
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {project.criteria.map((criterionA, idxA) => {
+                        const criteriaPriorities =
+                          calculationResults?.criteriaPriorities?.priorities ||
+                          {};
+                        const priority = criteriaPriorities[criterionA.id] || 0;
+
+                        const allPriorities = Object.values(
+                          criteriaPriorities
+                        ) as number[];
+                        const maxPriority =
+                          allPriorities.length > 0
+                            ? Math.max(...allPriorities)
+                            : 0;
+                        const isMaxPriority =
+                          priority === maxPriority && priority > 0;
+
+                        return (
+                          <tr
+                            key={criterionA.id}
+                            className={`border-b border-slate-200 dark:border-slate-800 ${
+                              idxA % 2 === 0
+                                ? "bg-white dark:bg-slate-900"
+                                : "bg-slate-50/50 dark:bg-slate-900/50"
+                            }`}
+                          >
+                            <td className="px-4 py-3 font-medium text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 sticky left-0 bg-inherit z-10">
+                              {criterionA.name}
+                            </td>
+                            {project.criteria.map((criterionB, idxB) => {
+                              if (criterionA.id === criterionB.id) {
+                                return (
+                                  <td
+                                    key={criterionB.id}
+                                    className="px-4 py-3 text-center bg-slate-100 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-800 font-bold"
+                                  >
+                                    1
+                                  </td>
+                                );
+                              }
+
+                              const isLowerTriangle = idxA > idxB;
+                              const savedAhpValue = getCriteriaAhpValue(
+                                criterionA.id,
+                                criterionB.id
+                              );
+                              const displayValue =
+                                savedAhpValue !== null ? savedAhpValue : null;
+
+                              const inputKey = `${criterionA.id}-${criterionB.id}`;
+                              const localInputValue = inputValues[inputKey];
+                              const inputDisplayValue =
+                                localInputValue !== undefined
+                                  ? localInputValue
+                                  : displayValue !== null && displayValue > 0
+                                  ? displayValue.toFixed(2)
+                                  : "";
+
+                              if (isLowerTriangle) {
+                                return (
+                                  <td
+                                    key={criterionB.id}
+                                    className="px-4 py-3 border-r border-slate-200 dark:border-slate-800"
+                                  >
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      placeholder="1"
+                                      className="w-full p-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-center text-sm"
+                                      value={inputDisplayValue}
+                                      onChange={(e) => {
+                                        const inputValue = e.target.value;
+
+                                        if (inputValue === "") {
+                                          setInputValues((prev) => ({
+                                            ...prev,
+                                            [inputKey]: "",
+                                          }));
+                                          return;
+                                        }
+
+                                        const regex =
+                                          /^(0?\.?\d{0,2}|[1-9]\d*\.?\d{0,2})$/;
+                                        if (regex.test(inputValue)) {
+                                          setInputValues((prev) => ({
+                                            ...prev,
+                                            [inputKey]: inputValue,
+                                          }));
+                                        }
+                                      }}
+                                      onBlur={(e) => {
+                                        const inputValue =
+                                          e.target.value.trim();
+
+                                        setInputValues((prev) => {
+                                          const newValues = { ...prev };
+                                          delete newValues[inputKey];
+                                          return newValues;
+                                        });
+
+                                        if (
+                                          inputValue === "" ||
+                                          inputValue === "." ||
+                                          inputValue === "-"
+                                        ) {
+                                          setCriteriaAhpValue(
+                                            criterionA.id,
+                                            criterionB.id,
+                                            0
+                                          );
+                                          return;
+                                        }
+
+                                        const numValue = parseFloat(inputValue);
+
+                                        if (
+                                          !isNaN(numValue) &&
+                                          numValue >= 0.01 &&
+                                          numValue <= 9
+                                        ) {
+                                          const rounded =
+                                            Math.round(numValue * 100) / 100;
+                                          setCriteriaAhpValue(
+                                            criterionA.id,
+                                            criterionB.id,
+                                            rounded
+                                          );
+                                        } else {
+                                          setCriteriaAhpValue(
+                                            criterionA.id,
+                                            criterionB.id,
+                                            0
+                                          );
+                                        }
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.currentTarget.blur();
+                                        }
+                                      }}
+                                      onFocus={(e) => {
+                                        if (
+                                          displayValue !== null &&
+                                          displayValue > 0
+                                        ) {
+                                          setInputValues((prev) => ({
+                                            ...prev,
+                                            [inputKey]: displayValue.toFixed(2),
+                                          }));
+                                        }
+                                      }}
+                                    />
+                                  </td>
+                                );
+                              }
+
+                              return (
+                                <td
+                                  key={criterionB.id}
+                                  className="px-4 py-3 border-r border-slate-200 dark:border-slate-800"
+                                >
+                                  <input
+                                    type="text"
+                                    readOnly
+                                    className="w-full p-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-slate-600 dark:text-slate-400 text-center text-sm font-mono cursor-not-allowed"
+                                    value={
+                                      displayValue !== null && displayValue > 0
+                                        ? displayValue.toFixed(2)
+                                        : "-"
+                                    }
+                                  />
+                                </td>
+                              );
+                            })}
+                            <td
+                              className={`px-4 py-3 text-center font-bold ${
+                                isMaxPriority
+                                  ? "text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/30"
+                                  : "text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-900/20"
+                              }`}
+                            >
+                              {priority > 0 ? priority.toFixed(3) : "-"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4">
+                  Pelo Cálculo da Consistência, temos:
+                </h2>
+                <div className="overflow-x-auto mb-6">
+                  <table className="w-full text-sm border-collapse">
+                    <thead className="bg-slate-100 dark:bg-slate-950/50">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-blue-100 dark:bg-blue-900/20">
+                          Critérios
+                        </th>
+                        {project.criteria.map((criterion) => (
+                          <th
+                            key={criterion.id}
+                            className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-blue-100 dark:bg-blue-900/20"
+                          >
+                            {criterion.name}
+                          </th>
+                        ))}
+                        <th className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 bg-blue-100 dark:bg-blue-900/20">
+                          Soma
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const consistency =
+                          calculationResults?.criteriaConsistency;
+                        const weightedMatrix =
+                          consistency?.weightedMatrix || [];
+                        const criteriaPriorities =
+                          calculationResults?.criteriaPriorities?.priorities ||
+                          {};
+
+                        return project.criteria.map((criterion, idx) => {
+                          const row = weightedMatrix[idx] || [];
+                          const priority =
+                            criteriaPriorities[criterion.id] || 0;
+
+                          let rowSum = 0;
+                          for (let j = 0; j < row.length; j++) {
+                            rowSum += row[j];
+                          }
+
+                          const sumDividedByPriority =
+                            priority > 0 ? rowSum / priority : 0;
+
+                          return (
+                            <tr
+                              key={criterion.id}
+                              className={`border-b border-slate-200 dark:border-slate-800 ${
+                                idx % 2 === 0
+                                  ? "bg-white dark:bg-slate-900"
+                                  : "bg-slate-50/50 dark:bg-slate-900/50"
+                              }`}
+                            >
+                              <td className="px-4 py-3 font-medium text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800">
+                                {criterion.name}
+                              </td>
+                              {row.map((value: number, colIdx: number) => (
+                                <td
+                                  key={colIdx}
+                                  className="px-4 py-3 text-center text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800"
+                                >
+                                  {value > 0 ? value.toFixed(3) : "-"}
+                                </td>
+                              ))}
+                              <td className="px-4 py-3 text-center font-bold text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800">
+                                {sumDividedByPriority > 0
+                                  ? sumDividedByPriority.toFixed(3)
+                                  : "-"}
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <div className="text-xs font-bold text-blue-700 dark:text-blue-300 mb-1">
+                        λ (Lambda)
+                      </div>
+                      <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                        {(() => {
+                          const consistency =
+                            calculationResults?.criteriaConsistency;
+                          return consistency && consistency.lambda > 0
+                            ? consistency.lambda.toFixed(4)
+                            : "-";
+                        })()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-blue-700 dark:text-blue-300 mb-1">
+                        CI
+                      </div>
+                      <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                        {(() => {
+                          const consistency =
+                            calculationResults?.criteriaConsistency;
+                          return consistency && consistency.CI > 0
+                            ? consistency.CI.toFixed(4)
+                            : "-";
+                        })()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-blue-700 dark:text-blue-300 mb-1">
+                        RI
+                      </div>
+                      <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                        {(() => {
+                          const consistency =
+                            calculationResults?.criteriaConsistency;
+                          return consistency && consistency.RI > 0
+                            ? consistency.RI.toFixed(2)
+                            : "-";
+                        })()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-blue-700 dark:text-blue-300 mb-1">
+                        CR
+                      </div>
+                      <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                        {(() => {
+                          const consistency =
+                            calculationResults?.criteriaConsistency;
+                          return consistency && consistency.CR > 0
+                            ? consistency.CR.toFixed(4)
+                            : "-";
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                  {(() => {
+                    const consistency = calculationResults?.criteriaConsistency;
+                    if (!consistency || !consistency.CR) return null;
+
+                    if (consistency.CR > 0.1) {
+                      return (
+                        <div className="mt-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
+                          <p className="text-sm font-bold text-red-800 dark:text-red-200">
+                            ⚠️ Atenção: CR &gt; 0.1. A matriz pode ser
+                            inconsistente.
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    if (consistency.CR > 0 && consistency.CR <= 0.1) {
+                      return (
+                        <div className="mt-4 p-3 bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 rounded-lg">
+                          <p className="text-sm font-bold text-emerald-800 dark:text-emerald-200">
+                            ✓ CR &lt; 0.1. Matriz consistente!
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    return null;
+                  })()}
+                </div>
+              </div>
+            </div>
+          ) : isDecisionPage ? (
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4">
+                  Decisão Final
+                </h2>
+
+                {project.criteria.length === 0 ||
+                project.cities.length === 0 ? (
+                  <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                    <p>
+                      Adicione critérios e cidades para ver o resultado final.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Primeira tabela (B4:F13): Prioridades dos critérios e valores das matrizes AHP */}
+                    <div className="overflow-x-auto mb-8">
+                      <table className="w-full text-sm border-collapse">
+                        <thead>
+                          <tr>
+                            <th
+                              rowSpan={2}
+                              className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/30"
+                            >
+                              Prioridade de Critérios
+                            </th>
+                            {project.criteria.map((criterion) => {
+                              return (
+                                <th
+                                  key={criterion.id}
+                                  className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/30"
+                                >
+                                  -
+                                </th>
+                              );
+                            })}
+                          </tr>
+                          <tr>
+                            <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40">
+                              \Critérios Alternativas
+                            </th>
+                            {project.criteria.map((criterion) => (
+                              <th
+                                key={`${criterion.id}-name-top`}
+                                className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40"
+                              >
+                                {criterion.name}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {project.cities.map((city, idx) => {
+                            return (
+                              <tr
+                                key={`${city.id}-top`}
+                                className={`border-b border-slate-200 dark:border-slate-800 ${
+                                  idx % 2 === 0
+                                    ? "bg-white dark:bg-slate-900"
+                                    : "bg-slate-50/50 dark:bg-slate-900/50"
+                                }`}
+                              >
+                                <td className="px-4 py-3 font-bold text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 bg-blue-50 dark:bg-blue-900/20">
+                                  {city.name}
+                                </td>
+                                {project.criteria.map((criterion) => {
+                                  const cityScores =
+                                    calculationResults?.cityCriterionScores?.[
+                                      city.id
+                                    ] || {};
+                                  const score = cityScores[criterion.id] || 0;
+                                  return (
+                                    <td
+                                      key={`${city.id}-${criterion.id}-topcell`}
+                                      className="px-4 py-3 text-center text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800"
+                                    >
+                                      {score > 0 ? score.toFixed(3) : "-"}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Segunda tabela (B16:H23): Matriz de decisão final */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm border-collapse">
+                        <thead>
+                          <tr>
+                            <th
+                              rowSpan={2}
+                              className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/30"
+                            >
+                              \Critérios Alternativas
+                            </th>
+                            {project.criteria.map((criterion) => (
+                              <th
+                                key={`${criterion.id}-name-bottom`}
+                                rowSpan={2}
+                                className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/30"
+                              >
+                                {criterion.name}
+                              </th>
+                            ))}
+                            <th
+                              rowSpan={2}
+                              className="px-4 py-3 text-center font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30"
+                            >
+                              !!DECISÃO FINAL!!
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {project.cities.map((city, idx) => {
+                            return (
+                              <tr
+                                key={`${city.id}-bottom`}
+                                className={`border-b border-slate-200 dark:border-slate-800 ${
+                                  idx % 2 === 0
+                                    ? "bg-white dark:bg-slate-900"
+                                    : "bg-slate-50/50 dark:bg-slate-900/50"
+                                }`}
+                              >
+                                <td className="px-4 py-3 font-bold text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 bg-blue-50 dark:bg-blue-900/20">
+                                  {city.name}
+                                </td>
+                                {project.criteria.map((criterion) => {
+                                  return (
+                                    <td
+                                      key={`${city.id}-${criterion.id}-bottomcell`}
+                                      className="px-4 py-3 text-center text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800"
+                                    >
+                                      -
+                                    </td>
+                                  );
+                                })}
+                                <td className="px-4 py-3 text-center font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30">
+                                  -
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : currentCriterionByIndex ? (
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                    {currentCriterionByIndex.name}
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Nome do subcritério"
+                      className="px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && e.currentTarget.value.trim()) {
+                          addSubCriterion(
+                            currentCriterionByIndex.id,
+                            e.currentTarget.value.trim()
+                          );
+                          e.currentTarget.value = "";
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={(e) => {
+                        const input = e.currentTarget
+                          .previousElementSibling as HTMLInputElement;
+                        if (input?.value.trim()) {
+                          addSubCriterion(
+                            currentCriterionByIndex.id,
+                            input.value.trim()
+                          );
+                          input.value = "";
+                        }
+                      }}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 4v16m8-8H4"
+                        />
+                      </svg>
+                      Adicionar Subcritério
+                    </button>
+                  </div>
+                </div>
+
+                {(() => {
+                  const subCriteria = (project.subCriteria || []).filter(
+                    (sc) => sc.criterionId === currentCriterionByIndex.id
+                  );
+
+                  const renderSubWeights =
+                    subCriteria.length >= 2 && project.cities.length > 0;
+
+                  if (subCriteria.length === 0) {
+                    return (
+                      <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                        <p>Nenhum subcritério adicionado ainda.</p>
+                        <p className="text-sm mt-2">
+                          Adicione um subcritério acima para começar.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-8">
+                      {renderSubWeights && (
+                        <div className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+                          <h3 className="text-base font-bold text-slate-900 dark:text-white mb-3">
+                            Peso dos Subcritérios (AHP)
+                          </h3>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm border-collapse">
+                              <thead className="bg-slate-100 dark:bg-slate-950/50">
+                                <tr>
+                                  <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-blue-100 dark:bg-blue-900/20 sticky left-0 z-10">
+                                    Subcritérios
+                                  </th>
+                                  {subCriteria.map((sub) => (
+                                    <th
+                                      key={sub.id}
+                                      className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-blue-100 dark:bg-blue-900/20 min-w-[120px]"
+                                    >
+                                      {sub.name}
+                                    </th>
+                                  ))}
+                                  <th className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 bg-pink-100 dark:bg-pink-900/20 min-w-[120px]">
+                                    Prioridades
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {subCriteria.map((subA, idxA) => {
+                                  const subWeightPriorities =
+                                    calculationResults?.subWeightPriorities?.[
+                                      currentCriterionByIndex.id
+                                    ]?.priorities || {};
+                                  const priority =
+                                    subWeightPriorities[subA.id] || 0;
+
+                                  const allP = Object.values(
+                                    subWeightPriorities
+                                  ) as number[];
+                                  const maxP =
+                                    allP.length > 0 ? Math.max(...allP) : 0;
+                                  const isMax =
+                                    priority === maxP && priority > 0;
+
+                                  return (
+                                    <tr
+                                      key={subA.id}
+                                      className={`border-b border-slate-200 dark:border-slate-800 ${
+                                        idxA % 2 === 0
+                                          ? "bg-white dark:bg-slate-900"
+                                          : "bg-slate-50/50 dark:bg-slate-900/50"
+                                      }`}
+                                    >
+                                      <td className="px-4 py-3 font-medium text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 sticky left-0 bg-inherit z-10">
+                                        {subA.name}
+                                      </td>
+                                      {subCriteria.map((subB, idxB) => {
+                                        if (subA.id === subB.id) {
+                                          return (
+                                            <td
+                                              key={subB.id}
+                                              className="px-4 py-3 text-center bg-slate-100 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-800 font-bold"
+                                            >
+                                              1
+                                            </td>
+                                          );
+                                        }
+
+                                        const isLower = idxA > idxB;
+                                        if (!currentCriterionByIndex)
+                                          return null;
+
+                                        const criterionId = (
+                                          currentCriterionByIndex as any
+                                        )?.id;
+                                        if (!criterionId) return null;
+
+                                        const saved = getSubWeightValue(
+                                          criterionId,
+                                          subA.id,
+                                          subB.id
+                                        );
+                                        const display =
+                                          saved !== null ? saved : null;
+                                        const inputKey = `${criterionId}-${subA.id}-${subB.id}-subw`;
+                                        const localInput =
+                                          inputValues[inputKey];
+                                        const inputDisplay =
+                                          localInput !== undefined
+                                            ? localInput
+                                            : display !== null && display > 0
+                                            ? display.toFixed(2)
+                                            : "";
+
+                                        if (isLower) {
+                                          return (
+                                            <td
+                                              key={subB.id}
+                                              className="px-4 py-3 border-r border-slate-200 dark:border-slate-800"
+                                            >
+                                              <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                placeholder="1"
+                                                className="w-full p-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-center text-sm"
+                                                value={inputDisplay}
+                                                onChange={(e) => {
+                                                  const val = e.target.value;
+                                                  if (val === "") {
+                                                    setInputValues((prev) => ({
+                                                      ...prev,
+                                                      [inputKey]: "",
+                                                    }));
+                                                    return;
+                                                  }
+                                                  const regex =
+                                                    /^(0?\.?\d{0,2}|[1-9]\d*\.?\d{0,2})$/;
+                                                  if (regex.test(val)) {
+                                                    setInputValues((prev) => ({
+                                                      ...prev,
+                                                      [inputKey]: val,
+                                                    }));
+                                                  }
+                                                }}
+                                                onBlur={(e) => {
+                                                  const v =
+                                                    e.target.value.trim();
+                                                  setInputValues((prev) => {
+                                                    const nv = { ...prev };
+                                                    delete nv[inputKey];
+                                                    return nv;
+                                                  });
+                                                  if (
+                                                    v === "" ||
+                                                    v === "." ||
+                                                    v === "-"
+                                                  ) {
+                                                    if (
+                                                      currentCriterionByIndex
+                                                    ) {
+                                                      const criterionId = (
+                                                        currentCriterionByIndex as any
+                                                      )?.id;
+                                                      if (criterionId) {
+                                                        setSubWeightValue(
+                                                          criterionId,
+                                                          subA.id,
+                                                          subB.id,
+                                                          0
+                                                        );
+                                                      }
+                                                    }
+                                                    return;
+                                                  }
+                                                  const num = parseFloat(v);
+                                                  if (
+                                                    !isNaN(num) &&
+                                                    num >= 0.01 &&
+                                                    num <= 9
+                                                  ) {
+                                                    const rounded =
+                                                      Math.round(num * 100) /
+                                                      100;
+                                                    if (
+                                                      currentCriterionByIndex
+                                                    ) {
+                                                      const criterionId = (
+                                                        currentCriterionByIndex as any
+                                                      )?.id;
+                                                      if (criterionId) {
+                                                        setSubWeightValue(
+                                                          criterionId,
+                                                          subA.id,
+                                                          subB.id,
+                                                          rounded
+                                                        );
+                                                      }
+                                                    }
+                                                  } else {
+                                                    if (
+                                                      currentCriterionByIndex
+                                                    ) {
+                                                      const criterionId = (
+                                                        currentCriterionByIndex as any
+                                                      )?.id;
+                                                      if (criterionId) {
+                                                        setSubWeightValue(
+                                                          criterionId,
+                                                          subA.id,
+                                                          subB.id,
+                                                          0
+                                                        );
+                                                      }
+                                                    }
+                                                  }
+                                                }}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === "Enter") {
+                                                    e.currentTarget.blur();
+                                                  }
+                                                }}
+                                                onFocus={() => {
+                                                  if (
+                                                    display !== null &&
+                                                    display > 0
+                                                  ) {
+                                                    setInputValues((prev) => ({
+                                                      ...prev,
+                                                      [inputKey]:
+                                                        display.toFixed(2),
+                                                    }));
+                                                  }
+                                                }}
+                                              />
+                                            </td>
+                                          );
+                                        }
+
+                                        return (
+                                          <td
+                                            key={subB.id}
+                                            className="px-4 py-3 border-r border-slate-200 dark:border-slate-800"
+                                          >
+                                            <input
+                                              type="text"
+                                              readOnly
+                                              className="w-full p-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-slate-600 dark:text-slate-400 text-center text-sm font-mono cursor-not-allowed"
+                                              value={
+                                                display !== null && display > 0
+                                                  ? display.toFixed(2)
+                                                  : "-"
+                                              }
+                                            />
+                                          </td>
+                                        );
+                                      })}
+                                      <td
+                                        className={`px-4 py-3 text-center font-bold ${
+                                          isMax
+                                            ? "text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/30"
+                                            : "text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-900/20"
+                                        }`}
+                                      >
+                                        {priority > 0
+                                          ? priority.toFixed(3)
+                                          : "-"}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {subCriteria.map((subCriterion) => {
+                        const title =
+                          getSubCriterionTitle(subCriterion.id) ||
+                          subCriterion.name;
+                        const subPrioritiesData =
+                          calculationResults?.subCriterionPriorities?.[
+                            subCriterion.id
+                          ];
+                        const subPriorities =
+                          subPrioritiesData?.priorities || {};
+                        const subConsistency =
+                          calculationResults?.subCriterionConsistency?.[
+                            subCriterion.id
+                          ];
+                        const weightedMatrix =
+                          subConsistency?.weightedMatrix || [];
+                        const weightedSums = subConsistency?.weightedSums || [];
+
+                        return (
+                          <div
+                            key={subCriterion.id}
+                            className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-700"
+                          >
+                            <div className="flex items-center justify-between mb-4">
+                              <input
+                                type="text"
+                                value={title}
+                                onChange={(e) =>
+                                  setSubCriterionTitle(
+                                    subCriterion.id,
+                                    e.target.value
+                                  )
+                                }
+                                className="text-lg font-bold text-slate-900 dark:text-white bg-transparent border-b-2 border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-emerald-500 focus:outline-none px-2 py-1 -ml-2"
+                                placeholder="Título da matriz AHP"
+                              />
+                              <button
+                                onClick={() =>
+                                  removeSubCriterion(subCriterion.id)
+                                }
+                                className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors"
+                              >
+                                Remover
+                              </button>
+                            </div>
+
+                            <div className="overflow-x-auto mb-6">
+                              <table className="w-full text-sm border-collapse">
+                                <thead className="bg-slate-100 dark:bg-slate-950/50">
+                                  <tr>
+                                    <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-blue-100 dark:bg-blue-900/20 sticky left-0 z-10">
+                                      {title}
+                                    </th>
+                                    {project.cities.map((city) => (
+                                      <th
+                                        key={city.id}
+                                        className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-blue-100 dark:bg-blue-900/20 min-w-[120px]"
+                                      >
+                                        {city.name}
+                                      </th>
+                                    ))}
+                                    <th className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 bg-pink-100 dark:bg-pink-900/20 min-w-[120px]">
+                                      Prioridades
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {project.cities.map((cityA, idxA) => {
+                                    const priority =
+                                      subPriorities[cityA.id] || 0;
+                                    const allPriorities = Object.values(
+                                      subPriorities
+                                    ) as number[];
+                                    const maxPriority =
+                                      allPriorities.length > 0
+                                        ? Math.max(...allPriorities)
+                                        : 0;
+                                    const isMaxPriority =
+                                      priority === maxPriority && priority > 0;
+
+                                    return (
+                                      <tr
+                                        key={cityA.id}
+                                        className={`border-b border-slate-200 dark:border-slate-800 ${
+                                          idxA % 2 === 0
+                                            ? "bg-white dark:bg-slate-900"
+                                            : "bg-slate-50/50 dark:bg-slate-900/50"
+                                        }`}
+                                      >
+                                        <td className="px-4 py-3 font-medium text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 sticky left-0 bg-inherit z-10">
+                                          {cityA.name}
+                                        </td>
+                                        {project.cities.map((cityB, idxB) => {
+                                          if (cityA.id === cityB.id) {
+                                            return (
+                                              <td
+                                                key={cityB.id}
+                                                className="px-4 py-3 text-center bg-slate-100 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-800 font-bold"
+                                              >
+                                                1
+                                              </td>
+                                            );
+                                          }
+
+                                          const isLowerTriangle = idxA > idxB;
+                                          const savedAhpValue =
+                                            getSubCriterionAhpValue(
+                                              subCriterion.id,
+                                              cityA.id,
+                                              cityB.id
+                                            );
+                                          const displayValue =
+                                            savedAhpValue !== null
+                                              ? savedAhpValue
+                                              : null;
+
+                                          const inputKey = `${subCriterion.id}-${cityA.id}-${cityB.id}`;
+                                          const localInputValue =
+                                            inputValues[inputKey];
+                                          const inputDisplayValue =
+                                            localInputValue !== undefined
+                                              ? localInputValue
+                                              : displayValue !== null &&
+                                                displayValue > 0
+                                              ? displayValue.toFixed(2)
+                                              : "";
+
+                                          if (isLowerTriangle) {
+                                            return (
+                                              <td
+                                                key={cityB.id}
+                                                className="px-4 py-3 border-r border-slate-200 dark:border-slate-800"
+                                              >
+                                                <input
+                                                  type="text"
+                                                  inputMode="decimal"
+                                                  placeholder="1"
+                                                  className="w-full p-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-center text-sm"
+                                                  value={inputDisplayValue}
+                                                  onChange={(e) => {
+                                                    const inputValue =
+                                                      e.target.value;
+                                                    if (inputValue === "") {
+                                                      setInputValues(
+                                                        (prev) => ({
+                                                          ...prev,
+                                                          [inputKey]: "",
+                                                        })
+                                                      );
+                                                      return;
+                                                    }
+                                                    const regex =
+                                                      /^(0?\.?\d{0,2}|[1-9]\d*\.?\d{0,2})$/;
+                                                    if (
+                                                      regex.test(inputValue)
+                                                    ) {
+                                                      setInputValues(
+                                                        (prev) => ({
+                                                          ...prev,
+                                                          [inputKey]:
+                                                            inputValue,
+                                                        })
+                                                      );
+                                                    }
+                                                  }}
+                                                  onBlur={(e) => {
+                                                    const inputValue =
+                                                      e.target.value.trim();
+                                                    setInputValues((prev) => {
+                                                      const newValues = {
+                                                        ...prev,
+                                                      };
+                                                      delete newValues[
+                                                        inputKey
+                                                      ];
+                                                      return newValues;
+                                                    });
+                                                    if (
+                                                      inputValue === "" ||
+                                                      inputValue === "." ||
+                                                      inputValue === "-"
+                                                    ) {
+                                                      setSubCriterionAhpValue(
+                                                        subCriterion.id,
+                                                        cityA.id,
+                                                        cityB.id,
+                                                        0
+                                                      );
+                                                      return;
+                                                    }
+                                                    const numValue =
+                                                      parseFloat(inputValue);
+                                                    if (
+                                                      !isNaN(numValue) &&
+                                                      numValue >= 0.01 &&
+                                                      numValue <= 9
+                                                    ) {
+                                                      const rounded =
+                                                        Math.round(
+                                                          numValue * 100
+                                                        ) / 100;
+                                                      setSubCriterionAhpValue(
+                                                        subCriterion.id,
+                                                        cityA.id,
+                                                        cityB.id,
+                                                        rounded
+                                                      );
+                                                    } else {
+                                                      setSubCriterionAhpValue(
+                                                        subCriterion.id,
+                                                        cityA.id,
+                                                        cityB.id,
+                                                        0
+                                                      );
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === "Enter") {
+                                                      e.currentTarget.blur();
+                                                    }
+                                                  }}
+                                                  onFocus={(e) => {
+                                                    if (
+                                                      displayValue !== null &&
+                                                      displayValue > 0
+                                                    ) {
+                                                      setInputValues(
+                                                        (prev) => ({
+                                                          ...prev,
+                                                          [inputKey]:
+                                                            displayValue.toFixed(
+                                                              2
+                                                            ),
+                                                        })
+                                                      );
+                                                    }
+                                                  }}
+                                                />
+                                              </td>
+                                            );
+                                          }
+
+                                          return (
+                                            <td
+                                              key={cityB.id}
+                                              className="px-4 py-3 border-r border-slate-200 dark:border-slate-800"
+                                            >
+                                              <input
+                                                type="text"
+                                                readOnly
+                                                className="w-full p-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-slate-600 dark:text-slate-400 text-center text-sm font-mono cursor-not-allowed"
+                                                value={
+                                                  displayValue !== null &&
+                                                  displayValue > 0
+                                                    ? displayValue.toFixed(2)
+                                                    : "-"
+                                                }
+                                              />
+                                            </td>
+                                          );
+                                        })}
+                                        <td
+                                          className={`px-4 py-3 text-center font-bold ${
+                                            isMaxPriority
+                                              ? "text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/30"
+                                              : "text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-900/20"
+                                          }`}
+                                        >
+                                          {priority > 0
+                                            ? priority.toFixed(3)
+                                            : "-"}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
+                              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">
+                                Cálculo da Consistência
+                              </h3>
+                              <div className="overflow-x-auto mb-6">
+                                <table className="w-full text-sm border-collapse">
+                                  <thead className="bg-slate-100 dark:bg-slate-950/50">
+                                    <tr>
+                                      <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-blue-100 dark:bg-blue-900/20">
+                                        Cidades
+                                      </th>
+                                      {project.cities.map((city) => (
+                                        <th
+                                          key={city.id}
+                                          className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-blue-100 dark:bg-blue-900/20"
+                                        >
+                                          {city.name}
+                                        </th>
+                                      ))}
+                                      <th className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 bg-blue-100 dark:bg-blue-900/20">
+                                        Soma
+                                      </th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {project.cities.map((city, idx) => {
+                                      const row = weightedMatrix?.[idx] || [];
+                                      const priority =
+                                        subPriorities[city.id] || 0;
+                                      let rowSum = 0;
+                                      for (let j = 0; j < row.length; j++) {
+                                        rowSum += row[j];
+                                      }
+                                      const sumDividedByPriority =
+                                        priority > 0 ? rowSum / priority : 0;
+
+                                      return (
+                                        <tr
+                                          key={city.id}
+                                          className={`border-b border-slate-200 dark:border-slate-800 ${
+                                            idx % 2 === 0
+                                              ? "bg-white dark:bg-slate-900"
+                                              : "bg-slate-50/50 dark:bg-slate-900/50"
+                                          }`}
+                                        >
+                                          <td className="px-4 py-3 font-medium text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800">
+                                            {city.name}
+                                          </td>
+                                          {row.map(
+                                            (value: number, colIdx: number) => (
+                                              <td
+                                                key={colIdx}
+                                                className="px-4 py-3 text-center text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800"
+                                              >
+                                                {value > 0
+                                                  ? value.toFixed(3)
+                                                  : "-"}
+                                              </td>
+                                            )
+                                          )}
+                                          <td className="px-4 py-3 text-center font-bold text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800">
+                                            {sumDividedByPriority > 0
+                                              ? sumDividedByPriority.toFixed(3)
+                                              : "-"}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                  <div>
+                                    <div className="text-xs font-bold text-blue-700 dark:text-blue-300 mb-1">
+                                      λ (Lambda)
+                                    </div>
+                                    <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                                      {(() => {
+                                        const consistency =
+                                          calculationResults
+                                            ?.subCriterionConsistency?.[
+                                            subCriterion.id
+                                          ];
+                                        return consistency &&
+                                          consistency.lambda > 0
+                                          ? consistency.lambda.toFixed(4)
+                                          : "-";
+                                      })()}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-bold text-blue-700 dark:text-blue-300 mb-1">
+                                      CI
+                                    </div>
+                                    <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                                      {(() => {
+                                        const consistency =
+                                          calculationResults
+                                            ?.subCriterionConsistency?.[
+                                            subCriterion.id
+                                          ];
+                                        return consistency && consistency.CI > 0
+                                          ? consistency.CI.toFixed(4)
+                                          : "-";
+                                      })()}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-bold text-blue-700 dark:text-blue-300 mb-1">
+                                      RI
+                                    </div>
+                                    <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                                      {(() => {
+                                        const consistency =
+                                          calculationResults
+                                            ?.subCriterionConsistency?.[
+                                            subCriterion.id
+                                          ];
+                                        return consistency && consistency.RI > 0
+                                          ? consistency.RI.toFixed(2)
+                                          : "-";
+                                      })()}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-bold text-blue-700 dark:text-blue-300 mb-1">
+                                      CR
+                                    </div>
+                                    <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                                      {(() => {
+                                        const consistency =
+                                          calculationResults
+                                            ?.subCriterionConsistency?.[
+                                            subCriterion.id
+                                          ];
+                                        return consistency && consistency.CR > 0
+                                          ? consistency.CR.toFixed(4)
+                                          : "-";
+                                      })()}
+                                    </div>
+                                  </div>
+                                </div>
+                                {(() => {
+                                  const consistency =
+                                    calculationResults
+                                      ?.subCriterionConsistency?.[
+                                      subCriterion.id
+                                    ];
+                                  if (!consistency || !consistency.CR)
+                                    return null;
+
+                                  if (consistency.CR > 0.1) {
+                                    return (
+                                      <div className="mt-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
+                                        <p className="text-sm font-bold text-red-800 dark:text-red-200">
+                                          ⚠️ Atenção: CR &gt; 0.1. A matriz pode
+                                          ser inconsistente.
+                                        </p>
+                                      </div>
+                                    );
+                                  }
+
+                                  if (
+                                    consistency.CR > 0 &&
+                                    consistency.CR <= 0.1
+                                  ) {
+                                    return (
+                                      <div className="mt-4 p-3 bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 rounded-lg">
+                                        <p className="text-sm font-bold text-emerald-800 dark:text-emerald-200">
+                                          ✓ CR &lt; 0.1. Matriz consistente!
+                                        </p>
+                                      </div>
+                                    );
+                                  }
+
+                                  return null;
+                                })()}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          ) : project.cities.length === 0 ? (
             <div className="flex-1 flex items-center justify-center p-12">
               <div className="text-center">
                 <p className="text-slate-500 dark:text-slate-400 mb-4">
@@ -836,9 +2242,33 @@ export default function DataEntryPage() {
                     </thead>
                     <tbody>
                       {project.cities.map((cityA, idxA) => {
-                        const priorities = calculatePriorityFromDistance(
-                          selectedPort.id
+                        if (!currentCriterionByIndex) {
+                          return null;
+                        }
+
+                        const criterionId = (currentCriterionByIndex as any)
+                          ?.id;
+                        if (!criterionId) {
+                          return null;
+                        }
+
+                        const currentSubCriteria = (
+                          project.subCriteria || []
+                        ).filter((sc) => sc.criterionId === criterionId);
+                        const portSubCriterion = currentSubCriteria.find(
+                          (sc) =>
+                            sc.name
+                              .toLowerCase()
+                              .includes(selectedPort.name.toLowerCase()) ||
+                            sc.name
+                              .toLowerCase()
+                              .includes(selectedPort.id.toLowerCase())
                         );
+                        const priorities = portSubCriterion
+                          ? calculationResults?.subCriterionPriorities?.[
+                              portSubCriterion.id
+                            ]?.priorities || {}
+                          : {};
                         const priority = priorities[cityA.id] || 0;
 
                         return (
@@ -913,6 +2343,11 @@ export default function DataEntryPage() {
                                         selectedPort.id,
                                         value
                                       );
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.currentTarget.blur();
+                                      }
                                     }}
                                   />
                                 </td>
@@ -1027,7 +2462,7 @@ export default function DataEntryPage() {
                         {city.name}
                       </h2>
                       <button
-                        onClick={() => addWarehouse(city.id)}
+                        onClick={addWarehouse}
                         className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
                       >
                         <svg
@@ -1063,6 +2498,9 @@ export default function DataEntryPage() {
                             </th>
                             <th className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-orange-100 dark:bg-orange-900/20">
                               Preço/m² (R$)
+                            </th>
+                            <th className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 bg-orange-100 dark:bg-orange-900/20">
+                              Ações
                             </th>
                           </tr>
                         </thead>
@@ -1140,6 +2578,31 @@ export default function DataEntryPage() {
                                       : "-"}
                                   </div>
                                 </td>
+                                <td className="px-4 py-3 text-center">
+                                  <button
+                                    onClick={() =>
+                                      removeWarehouse(city.id, warehouse.id)
+                                    }
+                                    className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 mx-auto"
+                                    title="Remover galpão"
+                                  >
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      className="h-3.5 w-3.5"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                      />
+                                    </svg>
+                                    Remover
+                                  </button>
+                                </td>
                               </tr>
                             );
                           })}
@@ -1160,6 +2623,7 @@ export default function DataEntryPage() {
                                 ? averages.pricePerM2.toFixed(2)
                                 : "-"}
                             </td>
+                            <td className="px-4 py-3"></td>
                           </tr>
                         </tbody>
                       </table>
@@ -1201,12 +2665,19 @@ export default function DataEntryPage() {
                         </thead>
                         <tbody>
                           {project.cities.map((cityA, idxA) => {
-                            const { priorities } = calculatePricePriorities();
-                            const priority = priorities?.[cityA.id] || 0;
+                            const pricePriorities =
+                              calculationResults?.subCriterionPriorities?.[
+                                currentPage.id
+                              ]?.priorities ||
+                              calculationResults?.cityCriterionScores?.[
+                                cityA.id
+                              ] ||
+                              {};
+                            const priority = pricePriorities[cityA.id] || 0;
 
                             const allPriorities = Object.values(
-                              priorities || {}
-                            );
+                              pricePriorities
+                            ) as number[];
                             const maxPriority =
                               allPriorities.length > 0
                                 ? Math.max(...allPriorities)
@@ -1281,7 +2752,8 @@ export default function DataEntryPage() {
                                               return;
                                             }
 
-                                            const regex = /^\d*\.?\d{0,2}$/;
+                                            const regex =
+                                              /^(0?\.?\d{0,2}|[1-9]\d*\.?\d{0,2})$/;
                                             if (regex.test(inputValue)) {
                                               setInputValues((prev) => ({
                                                 ...prev,
@@ -1334,6 +2806,11 @@ export default function DataEntryPage() {
                                                 cityB.id,
                                                 0
                                               );
+                                            }
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              e.currentTarget.blur();
                                             }
                                           }}
                                           onFocus={(e) => {
@@ -1415,13 +2892,59 @@ export default function DataEntryPage() {
                         </thead>
                         <tbody>
                           {(() => {
-                            const { weightedMatrix, weightedSums } =
-                              calculateConsistencyMetrics();
-                            const { priorities, matrix } =
-                              calculatePricePriorities();
+                            const priceCriterion = project.criteria.find(
+                              (c) =>
+                                c.name.toLowerCase().includes("preço") ||
+                                c.name.toLowerCase().includes("preco") ||
+                                c.name.toLowerCase().includes("custo")
+                            );
+
+                            if (!priceCriterion) {
+                              return project.cities.map((city) => (
+                                <tr key={city.id}>
+                                  <td>{city.name}</td>
+                                  {project.cities.map((_, idx) => (
+                                    <td key={idx}>-</td>
+                                  ))}
+                                  <td>-</td>
+                                </tr>
+                              ));
+                            }
+
+                            const priceSubCriteria = (
+                              project.subCriteria || []
+                            ).filter(
+                              (sc) => sc.criterionId === priceCriterion.id
+                            );
+
+                            let subCriterionId = priceSubCriteria[0]?.id;
+                            if (!subCriterionId && currentCriterionByIndex) {
+                              const currentSubs = (
+                                project.subCriteria || []
+                              ).filter(
+                                (sc) =>
+                                  sc.criterionId ===
+                                  (currentCriterionByIndex as any).id
+                              );
+                              subCriterionId = currentSubs[0]?.id;
+                            }
+
+                            const consistency = subCriterionId
+                              ? calculationResults?.subCriterionConsistency?.[
+                                  subCriterionId
+                                ]
+                              : null;
+                            const weightedMatrix =
+                              consistency?.weightedMatrix || [];
+                            const priorities = subCriterionId
+                              ? calculationResults?.subCriterionPriorities?.[
+                                  subCriterionId
+                                ]?.priorities || {}
+                              : {};
+
                             return project.cities.map((city, idx) => {
-                              const row = weightedMatrix?.[idx] || [];
-                              const priority = priorities?.[city.id] || 0;
+                              const row = weightedMatrix[idx] || [];
+                              const priority = priorities[city.id] || 0;
 
                               let rowSum = 0;
                               for (let j = 0; j < row.length; j++) {
@@ -1443,16 +2966,14 @@ export default function DataEntryPage() {
                                   <td className="px-4 py-3 font-medium text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800">
                                     {city.name}
                                   </td>
-                                  {row.map((value, colIdx) => {
-                                    return (
-                                      <td
-                                        key={colIdx}
-                                        className="px-4 py-3 text-center text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800"
-                                      >
-                                        {value > 0 ? value.toFixed(3) : "-"}
-                                      </td>
-                                    );
-                                  })}
+                                  {row.map((value: number, colIdx: number) => (
+                                    <td
+                                      key={colIdx}
+                                      className="px-4 py-3 text-center text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800"
+                                    >
+                                      {value > 0 ? value.toFixed(3) : "-"}
+                                    </td>
+                                  ))}
                                   <td className="px-4 py-3 text-center font-bold text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800">
                                     {sumDividedByPriority > 0
                                       ? sumDividedByPriority.toFixed(3)
@@ -1473,9 +2994,28 @@ export default function DataEntryPage() {
                             λ (Lambda)
                           </div>
                           <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
-                            {calculateConsistencyMetrics().lambda > 0
-                              ? calculateConsistencyMetrics().lambda.toFixed(4)
-                              : "-"}
+                            {(() => {
+                              if (!currentCriterionByIndex) return "-";
+
+                              const criterionId = (
+                                currentCriterionByIndex as any
+                              )?.id;
+                              if (!criterionId) return "-";
+
+                              const currentSubCriteria = (
+                                project.subCriteria || []
+                              ).filter((sc) => sc.criterionId === criterionId);
+                              const subCriterionId = currentSubCriteria[0]?.id;
+
+                              const consistency = subCriterionId
+                                ? calculationResults?.subCriterionConsistency?.[
+                                    subCriterionId
+                                  ]
+                                : null;
+                              return consistency && consistency.lambda > 0
+                                ? consistency.lambda.toFixed(4)
+                                : "-";
+                            })()}
                           </div>
                         </div>
                         <div>
@@ -1483,9 +3023,41 @@ export default function DataEntryPage() {
                             CI
                           </div>
                           <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
-                            {calculateConsistencyMetrics().CI > 0
-                              ? calculateConsistencyMetrics().CI.toFixed(4)
-                              : "-"}
+                            {(() => {
+                              const priceCriterion = project.criteria.find(
+                                (c) =>
+                                  c.name.toLowerCase().includes("preço") ||
+                                  c.name.toLowerCase().includes("preco") ||
+                                  c.name.toLowerCase().includes("custo")
+                              );
+                              const priceSubCriteria = priceCriterion
+                                ? (project.subCriteria || []).filter(
+                                    (sc) => sc.criterionId === priceCriterion.id
+                                  )
+                                : [];
+                              let subCriterionId = priceSubCriteria[0]?.id;
+                              if (!subCriterionId && currentCriterionByIndex) {
+                                const criterionId = (
+                                  currentCriterionByIndex as any
+                                )?.id;
+                                if (criterionId) {
+                                  const currentSubs = (
+                                    project.subCriteria || []
+                                  ).filter(
+                                    (sc) => sc.criterionId === criterionId
+                                  );
+                                  subCriterionId = currentSubs[0]?.id;
+                                }
+                              }
+                              const consistency = subCriterionId
+                                ? calculationResults?.subCriterionConsistency?.[
+                                    subCriterionId
+                                  ]
+                                : null;
+                              return consistency && consistency.CI > 0
+                                ? consistency.CI.toFixed(4)
+                                : "-";
+                            })()}
                           </div>
                         </div>
                         <div>
@@ -1494,9 +3066,41 @@ export default function DataEntryPage() {
                             {project.cities.length})
                           </div>
                           <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
-                            {calculateConsistencyMetrics().RI > 0
-                              ? calculateConsistencyMetrics().RI.toFixed(4)
-                              : "-"}
+                            {(() => {
+                              const priceCriterion = project.criteria.find(
+                                (c) =>
+                                  c.name.toLowerCase().includes("preço") ||
+                                  c.name.toLowerCase().includes("preco") ||
+                                  c.name.toLowerCase().includes("custo")
+                              );
+                              const priceSubCriteria = priceCriterion
+                                ? (project.subCriteria || []).filter(
+                                    (sc) => sc.criterionId === priceCriterion.id
+                                  )
+                                : [];
+                              let subCriterionId = priceSubCriteria[0]?.id;
+                              if (!subCriterionId && currentCriterionByIndex) {
+                                const criterionId = (
+                                  currentCriterionByIndex as any
+                                )?.id;
+                                if (criterionId) {
+                                  const currentSubs = (
+                                    project.subCriteria || []
+                                  ).filter(
+                                    (sc) => sc.criterionId === criterionId
+                                  );
+                                  subCriterionId = currentSubs[0]?.id;
+                                }
+                              }
+                              const consistency = subCriterionId
+                                ? calculationResults?.subCriterionConsistency?.[
+                                    subCriterionId
+                                  ]
+                                : null;
+                              return consistency && consistency.RI > 0
+                                ? consistency.RI.toFixed(4)
+                                : "-";
+                            })()}
                           </div>
                         </div>
                         <div>
@@ -1504,19 +3108,58 @@ export default function DataEntryPage() {
                             CR
                           </div>
                           <div
-                            className={`text-lg font-bold ${
-                              calculateConsistencyMetrics().CR < 0.1
+                            className={`text-lg font-bold $                            {(() => {
+                              if (!currentCriterionByIndex) return "text-red-600 dark:text-red-400";
+                              
+                              const currentSubCriteria = (project.subCriteria || []).filter(
+                                (sc) => sc.criterionId === currentCriterionByIndex.id
+                              );
+                              const subCriterionId = currentSubCriteria[0]?.id;
+                              
+                              const consistency = subCriterionId
+                                ? calculationResults?.subCriterionConsistency?.[
+                                    subCriterionId
+                                  ]
+                                : null;
+                              return consistency && consistency.CR < 0.1
                                 ? "text-emerald-600 dark:text-emerald-400"
-                                : "text-red-600 dark:text-red-400"
-                            }`}
+                                : "text-red-600 dark:text-red-400";
+                            })()}`}
                           >
-                            {calculateConsistencyMetrics().CR > 0
-                              ? calculateConsistencyMetrics().CR.toFixed(4)
-                              : "-"}
-                            {calculateConsistencyMetrics().CR > 0 &&
-                              calculateConsistencyMetrics().CR < 0.1 && (
-                                <span className="ml-2 text-xs">✓ CORRETO</span>
-                              )}
+                            {(() => {
+                              if (!currentCriterionByIndex) {
+                                return <>"-"</>;
+                              }
+
+                              const criterionId = (
+                                currentCriterionByIndex as any
+                              )?.id;
+                              if (!criterionId) {
+                                return <>"-"</>;
+                              }
+
+                              const currentSubCriteria = (
+                                project.subCriteria || []
+                              ).filter((sc) => sc.criterionId === criterionId);
+                              const subCriterionId = currentSubCriteria[0]?.id;
+
+                              const consistency = subCriterionId
+                                ? calculationResults?.subCriterionConsistency?.[
+                                    subCriterionId
+                                  ]
+                                : null;
+                              const cr = consistency?.CR || 0;
+                              return (
+                                <>
+                                  {cr > 0 ? cr.toFixed(4) : "-"}
+                                  {cr > 0 && cr < 0.1 && (
+                                    <span className="ml-2 text-xs">
+                                      ✓ CORRETO
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -1529,10 +3172,13 @@ export default function DataEntryPage() {
 
           <div className="p-6 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center">
             <div className="text-sm text-slate-500 dark:text-slate-400">
-              Página {pageIndex + 1} de {DATA_PAGES.length} - {currentPage.name}
+              Página {pageIndex + 1} de {totalPages} -{" "}
+              {currentCriterionByIndex
+                ? currentCriterionByIndex.name
+                : currentPage.name}
             </div>
             <div className="flex gap-3">
-              {!isLastPage ? (
+              {!isLastPage && project.criteria.length > 0 ? (
                 <button
                   onClick={handleNext}
                   className="bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 dark:hover:bg-emerald-500 text-white text-base px-8 py-3 rounded-xl font-bold transition-all shadow-lg hover:-translate-y-0.5"
@@ -1542,7 +3188,11 @@ export default function DataEntryPage() {
               ) : (
                 <button
                   onClick={handleFinish}
-                  disabled={createProject.isPending || updateProject.isPending}
+                  disabled={
+                    createProject.isPending ||
+                    updateProject.isPending ||
+                    project.criteria.length === 0
+                  }
                   className="bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 dark:hover:bg-emerald-500 text-white text-lg px-10 py-3 rounded-xl font-bold transition-all shadow-xl hover:-translate-y-0.5 flex items-center gap-2 disabled:opacity-70 disabled:cursor-wait"
                 >
                   {createProject.isPending || updateProject.isPending
