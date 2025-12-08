@@ -82,6 +82,7 @@ interface DecisionStore {
       criteriaMatrix?: Record<string, number>;
       evaluationValues?: EvaluationValues;
       criteriaConfig?: CriteriaConfig;
+      criterionFieldValues?: CriterionFieldValues;
     },
     projectId?: string
   ) => void;
