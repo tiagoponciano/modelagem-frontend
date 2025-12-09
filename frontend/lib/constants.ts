@@ -1,4 +1,4 @@
-export const API_BASE_URL = "https://modelagem-backend.vercel.app/";
+export const API_BASE_URL = "https://modelagem-backend.vercel.app";
 
 export const API_ENDPOINTS = {
   PROJECTS: `${API_BASE_URL}/projects`,
