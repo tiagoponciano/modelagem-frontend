@@ -134,7 +134,16 @@ function DataEntryPageContent() {
           "criteriaConsistency:",
           data.calculationResults?.criteriaConsistency
         );
-        setCalculationResults(data.calculationResults);
+        // O backend pode retornar os dados em diferentes chaves:
+        // - data.calculationResults (legado)
+        // - data.results (contém table, criteriaWeights, etc.)
+        // Usamos o primeiro que existir.
+        const calc =
+          data?.results ||
+          data?.calculationResults ||
+          data?.calculationResults?.table ||
+          data;
+        setCalculationResults(calc);
       } else {
         console.error(
           "Erro na resposta:",
@@ -1281,12 +1290,36 @@ function DataEntryPageContent() {
                               Prioridade de Critérios
                             </th>
                             {project.criteria.map((criterion) => {
+                              // Pesos vindos do backend (criteriaWeights ou criteriaPriorities)
+                              const tableRef =
+                                calculationResults?.table ||
+                                calculationResults?.results?.table ||
+                                {};
+                              const weightsFromPriorities =
+                                calculationResults?.criteriaPriorities
+                                  ?.priorities ||
+                                calculationResults?.results?.criteriaPriorities
+                                  ?.priorities ||
+                                {};
+                              const weightsFromResults =
+                                calculationResults?.criteriaWeights ||
+                                calculationResults?.results?.criteriaWeights ||
+                                tableRef?.criteriaWeights ||
+                                {};
+                              const weight =
+                                typeof weightsFromPriorities[criterion.id] ===
+                                "number"
+                                  ? weightsFromPriorities[criterion.id]
+                                  : typeof weightsFromResults[criterion.id] ===
+                                      "number"
+                                    ? weightsFromResults[criterion.id]
+                                    : 0;
                               return (
                                 <th
                                   key={criterion.id}
                                   className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/30"
                                 >
-                                  -
+                                  {weight > 0 ? weight.toFixed(3) : "-"}
                                 </th>
                               );
                             })}
@@ -1320,11 +1353,25 @@ function DataEntryPageContent() {
                                   {city.name}
                                 </td>
                                 {project.criteria.map((criterion) => {
+                                  // Valores brutos por critério/cidade
+                                  const tableRef =
+                                    calculationResults?.table ||
+                                    calculationResults?.results?.table ||
+                                    {};
+                                  const rawTable =
+                                    tableRef?.raw ||
+                                    calculationResults?.cityCriterionScores ||
+                                    {};
                                   const cityScores =
+                                    rawTable[city.id] ||
                                     calculationResults?.cityCriterionScores?.[
                                       city.id
-                                    ] || {};
-                                  const score = cityScores[criterion.id] || 0;
+                                    ] ||
+                                    {};
+                                  const score =
+                                    typeof cityScores[criterion.id] === "number"
+                                      ? cityScores[criterion.id]
+                                      : 0;
                                   return (
                                     <td
                                       key={`${city.id}-${criterion.id}-topcell`}
@@ -1371,6 +1418,32 @@ function DataEntryPageContent() {
                         </thead>
                         <tbody>
                           {project.cities.map((city, idx) => {
+                            // Tabela ponderada e decisão final já calculadas pelo backend
+                            const tableRef =
+                              calculationResults?.table ||
+                              calculationResults?.results?.table ||
+                              {};
+                            const weightedTable =
+                              tableRef?.weighted ||
+                              calculationResults?.cityCriterionScores ||
+                              {};
+                            const finalScoresPercent =
+                              tableRef?.finalScoresPercent || {};
+                            const finalScores = tableRef?.finalScores || {};
+
+                            const weightedValues =
+                              weightedTable[city.id] ||
+                              calculationResults?.cityCriterionScores?.[
+                                city.id
+                              ] ||
+                              {};
+                            const finalDecisionValue =
+                              typeof finalScoresPercent[city.id] === "string"
+                                ? finalScoresPercent[city.id]
+                                : typeof finalScores[city.id] === "number"
+                                  ? `${(finalScores[city.id] * 100).toFixed(2)}%`
+                                  : null;
+
                             return (
                               <tr
                                 key={`${city.id}-bottom`}
@@ -1384,17 +1457,24 @@ function DataEntryPageContent() {
                                   {city.name}
                                 </td>
                                 {project.criteria.map((criterion) => {
+                                  const weightedValue =
+                                    typeof weightedValues[criterion.id] ===
+                                    "number"
+                                      ? weightedValues[criterion.id]
+                                      : 0;
                                   return (
                                     <td
                                       key={`${city.id}-${criterion.id}-bottomcell`}
                                       className="px-4 py-3 text-center text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800"
                                     >
-                                      -
+                                      {weightedValue > 0
+                                        ? weightedValue.toFixed(3)
+                                        : "-"}
                                     </td>
                                   );
                                 })}
                                 <td className="px-4 py-3 text-center font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30">
-                                  -
+                                  {finalDecisionValue || "-"}
                                 </td>
                               </tr>
                             );
