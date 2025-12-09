@@ -3,8 +3,20 @@
 import { useDecisionStore } from "../../store/useDecisionStore";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import { useNavigation } from "../../hooks/useNavigation";
-import { useCreateProject, useUpdateProject, useSaveDraft, useUpdateDraft } from "../../hooks/useProjects";
-import { useState, useMemo, useEffect, Suspense, useRef, useCallback } from "react";
+import {
+  useCreateProject,
+  useUpdateProject,
+  useSaveDraft,
+  useUpdateDraft,
+} from "../../hooks/useProjects";
+import {
+  useState,
+  useMemo,
+  useEffect,
+  Suspense,
+  useRef,
+  useCallback,
+} from "react";
 import { useSearchParams } from "next/navigation";
 import { API_ENDPOINTS } from "../../lib/constants";
 
@@ -47,7 +59,7 @@ function DataEntryPageContent() {
   const updateProject = useUpdateProject();
   const saveDraft = useSaveDraft();
   const updateDraft = useUpdateDraft();
-  
+
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedDataRef = useRef<string>("");
 
@@ -56,7 +68,7 @@ function DataEntryPageContent() {
 
   const pageIndex = pageParam ? Math.max(0, parseInt(pageParam, 10)) : 0;
 
-  const totalPages = 2 + project.criteria.length; // prioridades + critérios + decisão final
+  const totalPages = 2 + project.criteria.length;
 
   const isDecisionPage = pageIndex === totalPages - 1;
   const criterionPageIndex =
@@ -130,9 +142,6 @@ function DataEntryPageContent() {
       if (response.ok) {
         const data = await response.json();
         console.log("Dados recebidos do backend:", data);
-        // O backend retorna data.results com a estrutura:
-        // { criteriaWeights, table: { raw, weighted, finalScores, finalScoresPercent }, ... }
-        // Se não vier em results, tenta calculationResults (legado)
         const results = data?.results || data?.calculationResults || data;
         setCalculationResults(results);
       } else {
@@ -167,17 +176,13 @@ function DataEntryPageContent() {
     project.criterionFieldValues,
   ]);
 
-  // Função para salvar automaticamente o draft
   const autoSave = useCallback(() => {
-    // Limpa o timeout anterior se existir
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current);
     }
 
-    // Cria um novo timeout para salvar após 2 segundos de inatividade
     autoSaveTimeoutRef.current = setTimeout(async () => {
       try {
-        // Prepara os dados para salvar
         const dataToSave = {
           title: project.title,
           cities: project.cities,
@@ -189,30 +194,28 @@ function DataEntryPageContent() {
           criterionFieldValues: project.criterionFieldValues || {},
         };
 
-        // Cria uma string para comparar com a última versão salva
         const dataString = JSON.stringify(dataToSave);
-        
-        // Só salva se os dados mudaram
+
         if (dataString === lastSavedDataRef.current) {
           return;
         }
 
-        // Verifica se há dados mínimos para salvar
-        if (!project.title || project.cities.length === 0 || project.criteria.length === 0) {
+        if (
+          !project.title ||
+          project.cities.length === 0 ||
+          project.criteria.length === 0
+        ) {
           return;
         }
 
         if (editingProjectId) {
-          // Atualiza projeto existente
           await updateDraft.mutateAsync({
             id: editingProjectId,
             project: dataToSave,
           });
           lastSavedDataRef.current = dataString;
         } else {
-          // Cria novo projeto como draft
           const savedProject = await saveDraft.mutateAsync(dataToSave);
-          // Atualiza o editingProjectId no store para próximas atualizações
           if (savedProject?.id) {
             setEditingProjectId(savedProject.id);
           }
@@ -220,9 +223,8 @@ function DataEntryPageContent() {
         }
       } catch (error) {
         console.error("Erro ao salvar automaticamente:", error);
-        // Não mostra erro para o usuário, apenas loga
       }
-    }, 2000); // 2 segundos de debounce
+    }, 2000);
   }, [
     project.title,
     project.cities,
@@ -237,11 +239,9 @@ function DataEntryPageContent() {
     updateDraft,
   ]);
 
-  // Efeito para salvar automaticamente quando os dados mudarem
   useEffect(() => {
     autoSave();
 
-    // Limpa o timeout quando o componente desmontar
     return () => {
       if (autoSaveTimeoutRef.current) {
         clearTimeout(autoSaveTimeoutRef.current);
@@ -514,7 +514,6 @@ function DataEntryPageContent() {
     setCriterionFieldValue(key, "title", "title", title);
   };
 
-  // --- Pesos entre subcritérios (AHP local do critério) ---
   const getSubWeightValue = (
     criterionId: string,
     subAId: string,
@@ -719,13 +718,11 @@ function DataEntryPageContent() {
     }
 
     const criterionIndex = pageIndex - 1;
-    // Se ainda há critérios pela frente
     if (criterionIndex < project.criteria.length - 1) {
       navigate(`/data-entry?page=${pageIndex + 1}`);
       return;
     }
 
-    // Depois do último critério, vai para decisão final
     navigate(`/data-entry?page=${totalPages - 1}`);
   };
 
@@ -749,7 +746,6 @@ function DataEntryPageContent() {
     }
 
     try {
-      // Prepara todos os dados completos para finalizar o projeto
       const completeProjectData = {
         title: project.title,
         cities: project.cities,
@@ -759,40 +755,40 @@ function DataEntryPageContent() {
         evaluationValues: project.evaluationValues || {},
         criteriaConfig: project.criteriaConfig || {},
         criterionFieldValues: project.criterionFieldValues || {},
-        // Marca explicitamente como "Concluído" ao finalizar
         status: "Concluído",
       };
 
-      // Log para debug - verificar o que está sendo enviado
       console.log("Dados completos sendo salvos:", {
         ...completeProjectData,
-        criterionFieldValuesKeys: Object.keys(completeProjectData.criterionFieldValues),
-        criterionFieldValuesCount: Object.keys(completeProjectData.criterionFieldValues).length,
+        criterionFieldValuesKeys: Object.keys(
+          completeProjectData.criterionFieldValues
+        ),
+        criterionFieldValuesCount: Object.keys(
+          completeProjectData.criterionFieldValues
+        ).length,
         subCriteriaCount: completeProjectData.subCriteria.length,
       });
 
       let data;
       if (editingProjectId) {
-        // PATCH /projects/:id - Finaliza o projeto (recalcula e atualiza status para "Concluído")
         data = await updateProject.mutateAsync({
           id: editingProjectId,
           project: completeProjectData,
         });
       } else {
-        // POST /projects - Cria novo projeto finalizado
         data = await createProject.mutateAsync(completeProjectData);
       }
-      
-      // Log para verificar o que foi retornado
+
       console.log("Projeto salvo com sucesso:", {
         id: data.id,
         hasCriterionFieldValues: !!data.criterionFieldValues,
-        criterionFieldValuesKeys: data.criterionFieldValues ? Object.keys(data.criterionFieldValues) : [],
+        criterionFieldValuesKeys: data.criterionFieldValues
+          ? Object.keys(data.criterionFieldValues)
+          : [],
         hasSubCriteria: !!data.subCriteria,
         subCriteriaCount: data.subCriteria?.length || 0,
       });
-      
-      // Navega para a página de resultados
+
       navigate(`/results/${data.id}`);
     } catch (error) {
       const errorMessage =
@@ -1288,29 +1284,27 @@ function DataEntryPageContent() {
                   </div>
                 ) : (
                   <>
-                    {/* Primeira tabela (B4:F13): Prioridades dos critérios e valores das matrizes AHP */}
                     <div className="overflow-x-auto mb-8">
                       <table className="w-full text-sm border-collapse">
                         <thead>
                           <tr>
-                            <th
-                              className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/30"
-                            >
+                            <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/30">
                               Prioridade de Critérios
                             </th>
                             {project.criteria.map((criterion) => {
-                              // Pesos vindos do backend: results.criteriaWeights (nova estrutura)
-                              // Vincula automaticamente pelo ID do critério (escalável)
                               const resultsData =
-                                calculationResults?.results || calculationResults || {};
+                                calculationResults?.results ||
+                                calculationResults ||
+                                {};
                               const criteriaWeights =
                                 resultsData.criteriaWeights ||
-                                calculationResults?.criteriaPriorities?.priorities ||
+                                calculationResults?.criteriaPriorities
+                                  ?.priorities ||
                                 {};
-                              
-                              // Busca o peso pelo ID do critério (escalável)
+
                               const weight =
-                                typeof criteriaWeights[criterion.id] === "number"
+                                typeof criteriaWeights[criterion.id] ===
+                                "number"
                                   ? criteriaWeights[criterion.id]
                                   : 0;
                               return (
@@ -1333,19 +1327,18 @@ function DataEntryPageContent() {
                         </thead>
                         <tbody>
                           {project.cities.map((city, idx) => {
-                            // Busca os valores calculados da prioridade de cada cidade por critério
-                            // Primeiro tenta results.table.raw (dados do backend)
                             const resultsTable =
                               calculationResults?.results?.table ||
                               calculationResults?.table ||
                               {};
                             const rawTable = resultsTable?.raw || {};
                             const cityScores = rawTable[city.id] || {};
-                            
-                            // Fallback: tenta cityCriterionScores (estrutura antiga)
+
                             const fallbackScores =
-                              calculationResults?.cityCriterionScores?.[city.id] || {};
-                            
+                              calculationResults?.cityCriterionScores?.[
+                                city.id
+                              ] || {};
+
                             return (
                               <tr
                                 key={`${city.id}-top`}
@@ -1359,11 +1352,11 @@ function DataEntryPageContent() {
                                   {city.name}
                                 </td>
                                 {project.criteria.map((criterion) => {
-                                  // Prioridade da cidade para aquele critério (valores brutos)
                                   const score =
                                     typeof cityScores[criterion.id] === "number"
                                       ? cityScores[criterion.id]
-                                      : typeof fallbackScores[criterion.id] === "number"
+                                      : typeof fallbackScores[criterion.id] ===
+                                        "number"
                                       ? fallbackScores[criterion.id]
                                       : 0;
                                   return (
@@ -1382,7 +1375,6 @@ function DataEntryPageContent() {
                       </table>
                     </div>
 
-                    {/* Segunda tabela (B16:H23): Matriz de decisão final */}
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm border-collapse">
                         <thead>
@@ -1391,7 +1383,7 @@ function DataEntryPageContent() {
                               rowSpan={2}
                               className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/30"
                             >
-                              \Critérios Alternativas
+                              Critérios Alternativas
                             </th>
                             {project.criteria.map((criterion) => (
                               <th
@@ -1406,84 +1398,93 @@ function DataEntryPageContent() {
                               rowSpan={2}
                               className="px-4 py-3 text-center font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30"
                             >
-                              !!DECISÃO FINAL!!
+                              Decisão Final
                             </th>
                           </tr>
                         </thead>
                         <tbody>
                           {project.cities.map((city, idx) => {
-                            // Busca os dados calculados
                             const resultsTable =
                               calculationResults?.results?.table ||
                               calculationResults?.table ||
                               {};
-                            
-                            // Busca os pesos dos critérios
+
                             const resultsData =
-                              calculationResults?.results || calculationResults || {};
+                              calculationResults?.results ||
+                              calculationResults ||
+                              {};
                             const criteriaWeights =
                               resultsData.criteriaWeights ||
-                              calculationResults?.criteriaPriorities?.priorities ||
+                              calculationResults?.criteriaPriorities
+                                ?.priorities ||
                               {};
-                            
-                            // Busca as prioridades das cidades (da primeira tabela)
+
                             const rawTable = resultsTable?.raw || {};
                             const cityScores = rawTable[city.id] || {};
                             const fallbackScores =
-                              calculationResults?.cityCriterionScores?.[city.id] || {};
-                            
-                            // Tabela ponderada: prioridade da cidade × prioridade do critério
-                            // Primeiro tenta usar dados já calculados pelo backend
+                              calculationResults?.cityCriterionScores?.[
+                                city.id
+                              ] || {};
+
                             const weightedTable = resultsTable?.weighted || {};
-                            const backendWeightedValues = weightedTable[city.id] || {};
-                            
-                            // Calcula valores ponderados e soma para a decisão final
+                            const backendWeightedValues =
+                              weightedTable[city.id] || {};
+
                             let finalDecisionSum = 0;
-                            const weightedValues = project.criteria.map((criterion) => {
-                              // Tenta usar valor já calculado pelo backend
-                              if (typeof backendWeightedValues[criterion.id] === "number") {
-                                const value = backendWeightedValues[criterion.id];
-                                finalDecisionSum += value;
-                                return value;
+                            const weightedValues = project.criteria.map(
+                              (criterion) => {
+                                if (
+                                  typeof backendWeightedValues[criterion.id] ===
+                                  "number"
+                                ) {
+                                  const value =
+                                    backendWeightedValues[criterion.id];
+                                  finalDecisionSum += value;
+                                  return value;
+                                }
+
+                                const criterionWeight =
+                                  typeof criteriaWeights[criterion.id] ===
+                                  "number"
+                                    ? criteriaWeights[criterion.id]
+                                    : 0;
+
+                                const cityPriority =
+                                  typeof cityScores[criterion.id] === "number"
+                                    ? cityScores[criterion.id]
+                                    : typeof fallbackScores[criterion.id] ===
+                                      "number"
+                                    ? fallbackScores[criterion.id]
+                                    : 0;
+
+                                const weightedValue =
+                                  criterionWeight * cityPriority;
+                                finalDecisionSum += weightedValue;
+
+                                return weightedValue;
                               }
-                              
-                              // Calcula manualmente: prioridade do critério × prioridade da cidade
-                              const criterionWeight =
-                                typeof criteriaWeights[criterion.id] === "number"
-                                  ? criteriaWeights[criterion.id]
-                                  : 0;
-                              
-                              const cityPriority =
-                                typeof cityScores[criterion.id] === "number"
-                                  ? cityScores[criterion.id]
-                                  : typeof fallbackScores[criterion.id] === "number"
-                                  ? fallbackScores[criterion.id]
-                                  : 0;
-                              
-                              // Multiplica: prioridade do critério × prioridade da cidade
-                              const weightedValue = criterionWeight * cityPriority;
-                              finalDecisionSum += weightedValue;
-                              
-                              return weightedValue;
-                            });
-                            
-                            // Decisão final: soma da linha (já calculada acima ou do backend)
-                            // O backend pode retornar como decimal (0.553) ou já como porcentagem ("55.3%")
+                            );
+
                             const finalScores = resultsTable?.finalScores || {};
-                            const finalScoresPercent = resultsTable?.finalScoresPercent || {};
-                            
-                            // Determina o valor final da decisão
+                            const finalScoresPercent =
+                              resultsTable?.finalScoresPercent || {};
+
                             let finalDecisionValue: string | null = null;
-                            
-                            if (typeof finalScoresPercent[city.id] === "string") {
-                              // Backend já retornou como porcentagem formatada (ex: "55.3%")
+
+                            if (
+                              typeof finalScoresPercent[city.id] === "string"
+                            ) {
                               finalDecisionValue = finalScoresPercent[city.id];
-                            } else if (typeof finalScores[city.id] === "number") {
-                              // Backend retornou como decimal (ex: 0.553) - multiplica por 100
-                              finalDecisionValue = `${(finalScores[city.id] * 100).toFixed(2)}%`;
+                            } else if (
+                              typeof finalScores[city.id] === "number"
+                            ) {
+                              finalDecisionValue = `${(
+                                finalScores[city.id] * 100
+                              ).toFixed(2)}%`;
                             } else if (finalDecisionSum > 0) {
-                              // Calculado manualmente - multiplica por 100 para converter para porcentagem
-                              finalDecisionValue = `${(finalDecisionSum * 100).toFixed(2)}%`;
+                              finalDecisionValue = `${(
+                                finalDecisionSum * 100
+                              ).toFixed(2)}%`;
                             }
 
                             return (
@@ -1498,19 +1499,22 @@ function DataEntryPageContent() {
                                 <td className="px-4 py-3 font-bold text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 bg-blue-50 dark:bg-blue-900/20">
                                   {city.name}
                                 </td>
-                                {project.criteria.map((criterion, criterionIdx) => {
-                                  const weightedValue = weightedValues[criterionIdx] || 0;
-                                  return (
-                                    <td
-                                      key={`${city.id}-${criterion.id}-bottomcell`}
-                                      className="px-4 py-3 text-center text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800"
-                                    >
-                                      {weightedValue > 0
-                                        ? weightedValue.toFixed(4)
-                                        : "-"}
-                                    </td>
-                                  );
-                                })}
+                                {project.criteria.map(
+                                  (criterion, criterionIdx) => {
+                                    const weightedValue =
+                                      weightedValues[criterionIdx] || 0;
+                                    return (
+                                      <td
+                                        key={`${city.id}-${criterion.id}-bottomcell`}
+                                        className="px-4 py-3 text-center text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800"
+                                      >
+                                        {weightedValue > 0
+                                          ? weightedValue.toFixed(4)
+                                          : "-"}
+                                      </td>
+                                    );
+                                  }
+                                )}
                                 <td className="px-4 py-3 text-center font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30">
                                   {finalDecisionValue || "-"}
                                 </td>
