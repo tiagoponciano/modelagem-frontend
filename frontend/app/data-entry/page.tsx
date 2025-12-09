@@ -3,8 +3,8 @@
 import { useDecisionStore } from "../../store/useDecisionStore";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import { useNavigation } from "../../hooks/useNavigation";
-import { useCreateProject, useUpdateProject } from "../../hooks/useProjects";
-import { useState, useMemo, useEffect, Suspense } from "react";
+import { useCreateProject, useUpdateProject, useSaveDraft, useUpdateDraft } from "../../hooks/useProjects";
+import { useState, useMemo, useEffect, Suspense, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { API_ENDPOINTS } from "../../lib/constants";
 
@@ -37,6 +37,7 @@ function DataEntryPageContent() {
   const {
     project,
     editingProjectId,
+    setEditingProjectId,
     setCriterionFieldValue,
     setCriteriaJudgment,
     addSubCriterion,
@@ -44,6 +45,11 @@ function DataEntryPageContent() {
   } = useDecisionStore();
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
+  const saveDraft = useSaveDraft();
+  const updateDraft = useUpdateDraft();
+  
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSavedDataRef = useRef<string>("");
 
   const pageParam = searchParams.get("page");
   const criterionIdParam = searchParams.get("criterion");
@@ -160,6 +166,88 @@ function DataEntryPageContent() {
     project.subCriteria,
     project.criterionFieldValues,
   ]);
+
+  // Função para salvar automaticamente o draft
+  const autoSave = useCallback(() => {
+    // Limpa o timeout anterior se existir
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    // Cria um novo timeout para salvar após 2 segundos de inatividade
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      try {
+        // Prepara os dados para salvar
+        const dataToSave = {
+          title: project.title,
+          cities: project.cities,
+          criteria: project.criteria,
+          subCriteria: project.subCriteria || [],
+          criteriaMatrix: project.criteriaMatrix || {},
+          evaluationValues: project.evaluationValues || {},
+          criteriaConfig: project.criteriaConfig || {},
+          criterionFieldValues: project.criterionFieldValues || {},
+        };
+
+        // Cria uma string para comparar com a última versão salva
+        const dataString = JSON.stringify(dataToSave);
+        
+        // Só salva se os dados mudaram
+        if (dataString === lastSavedDataRef.current) {
+          return;
+        }
+
+        // Verifica se há dados mínimos para salvar
+        if (!project.title || project.cities.length === 0 || project.criteria.length === 0) {
+          return;
+        }
+
+        if (editingProjectId) {
+          // Atualiza projeto existente
+          await updateDraft.mutateAsync({
+            id: editingProjectId,
+            project: dataToSave,
+          });
+          lastSavedDataRef.current = dataString;
+        } else {
+          // Cria novo projeto como draft
+          const savedProject = await saveDraft.mutateAsync(dataToSave);
+          // Atualiza o editingProjectId no store para próximas atualizações
+          if (savedProject?.id) {
+            setEditingProjectId(savedProject.id);
+          }
+          lastSavedDataRef.current = dataString;
+        }
+      } catch (error) {
+        console.error("Erro ao salvar automaticamente:", error);
+        // Não mostra erro para o usuário, apenas loga
+      }
+    }, 2000); // 2 segundos de debounce
+  }, [
+    project.title,
+    project.cities,
+    project.criteria,
+    project.subCriteria,
+    project.criteriaMatrix,
+    project.evaluationValues,
+    project.criteriaConfig,
+    project.criterionFieldValues,
+    editingProjectId,
+    saveDraft,
+    updateDraft,
+  ]);
+
+  // Efeito para salvar automaticamente quando os dados mudarem
+  useEffect(() => {
+    autoSave();
+
+    // Limpa o timeout quando o componente desmontar
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [autoSave]);
 
   if (!currentPage) {
     return (

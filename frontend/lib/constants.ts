@@ -6,4 +6,6 @@ export const API_ENDPOINTS = {
   UPDATE_PROJECT: (id: string) => `${API_BASE_URL}/projects/${id}`,
   DELETE_PROJECT: (id: string) => `${API_BASE_URL}/projects/${id}`,
   CALCULATE: `${API_BASE_URL}/projects/calculate`,
+  SAVE_DRAFT: `${API_BASE_URL}/projects/draft`,
+  UPDATE_DRAFT: (id: string) => `${API_BASE_URL}/projects/${id}/draft`,
 } as const;

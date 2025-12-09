@@ -49,6 +49,7 @@ interface DecisionStore {
   project: Project;
   editingProjectId: string | null;
 
+  setEditingProjectId: (id: string | null) => void;
   setProjectTitle: (title: string) => void;
   addCity: (option: Option) => void;
   removeCity: (id: string) => void;
@@ -100,6 +101,9 @@ export const useDecisionStore = create<DecisionStore>((set) => ({
     criterionFieldValues: {},
   },
   editingProjectId: null,
+
+  setEditingProjectId: (id) =>
+    set({ editingProjectId: id }),
 
   setProjectTitle: (title) =>
     set((state) => ({ project: { ...state.project, title } })),

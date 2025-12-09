@@ -65,3 +65,33 @@ export function useDeleteProject() {
     },
   });
 }
+
+export function useSaveDraft() {
+  const queryClient = useQueryClient();
+
+  return useMutation<Project, Error, Partial<ProjectInput> & { id?: string }>({
+    mutationFn: (project) => api.saveDraft(project),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      if (data.id) {
+        queryClient.invalidateQueries({ queryKey: ["project", data.id] });
+      }
+    },
+  });
+}
+
+export function useUpdateDraft() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    Project,
+    Error,
+    { id: string; project: Partial<ProjectInput> }
+  >({
+    mutationFn: ({ id, project }) => api.updateDraft(id, project),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["project", data.id] });
+    },
+  });
+}

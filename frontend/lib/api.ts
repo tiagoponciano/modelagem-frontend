@@ -168,4 +168,43 @@ export const api = {
       throw new ApiError("Não foi possível excluir o projeto.");
     }
   },
+
+  async saveDraft(project: Partial<ProjectInput> & { id?: string }): Promise<Project> {
+    try {
+      const { originalData, results, ...projectData } = project;
+
+      const response = await fetch(API_ENDPOINTS.SAVE_DRAFT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(projectData),
+      });
+      return handleResponse<Project>(response);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError("Não foi possível salvar o rascunho.");
+    }
+  },
+
+  async updateDraft(
+    id: string,
+    project: Partial<ProjectInput>
+  ): Promise<Project> {
+    try {
+      const { originalData, results, ...projectData } = project;
+
+      const response = await fetch(API_ENDPOINTS.UPDATE_DRAFT(id), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(projectData),
+      });
+      return handleResponse<Project>(response);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError("Não foi possível atualizar o rascunho.");
+    }
+  },
 };
