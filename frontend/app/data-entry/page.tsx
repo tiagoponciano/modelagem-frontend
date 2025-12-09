@@ -763,6 +763,14 @@ function DataEntryPageContent() {
         status: "Concluído",
       };
 
+      // Log para debug - verificar o que está sendo enviado
+      console.log("Dados completos sendo salvos:", {
+        ...completeProjectData,
+        criterionFieldValuesKeys: Object.keys(completeProjectData.criterionFieldValues),
+        criterionFieldValuesCount: Object.keys(completeProjectData.criterionFieldValues).length,
+        subCriteriaCount: completeProjectData.subCriteria.length,
+      });
+
       let data;
       if (editingProjectId) {
         // PATCH /projects/:id - Finaliza o projeto (recalcula e atualiza status para "Concluído")
@@ -774,6 +782,15 @@ function DataEntryPageContent() {
         // POST /projects - Cria novo projeto finalizado
         data = await createProject.mutateAsync(completeProjectData);
       }
+      
+      // Log para verificar o que foi retornado
+      console.log("Projeto salvo com sucesso:", {
+        id: data.id,
+        hasCriterionFieldValues: !!data.criterionFieldValues,
+        criterionFieldValuesKeys: data.criterionFieldValues ? Object.keys(data.criterionFieldValues) : [],
+        hasSubCriteria: !!data.subCriteria,
+        subCriteriaCount: data.subCriteria?.length || 0,
+      });
       
       // Navega para a página de resultados
       navigate(`/results/${data.id}`);
@@ -1277,13 +1294,13 @@ function DataEntryPageContent() {
                         <thead>
                           <tr>
                             <th
-                              rowSpan={2}
                               className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/30"
                             >
                               Prioridade de Critérios
                             </th>
                             {project.criteria.map((criterion) => {
                               // Pesos vindos do backend: results.criteriaWeights (nova estrutura)
+                              // Vincula automaticamente pelo ID do critério (escalável)
                               const resultsData =
                                 calculationResults?.results || calculationResults || {};
                               const criteriaWeights =
@@ -1291,6 +1308,7 @@ function DataEntryPageContent() {
                                 calculationResults?.criteriaPriorities?.priorities ||
                                 {};
                               
+                              // Busca o peso pelo ID do critério (escalável)
                               const weight =
                                 typeof criteriaWeights[criterion.id] === "number"
                                   ? criteriaWeights[criterion.id]
@@ -1300,23 +1318,17 @@ function DataEntryPageContent() {
                                   key={criterion.id}
                                   className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/30"
                                 >
-                                  {weight > 0 ? weight.toFixed(3) : "-"}
+                                  <div className="flex flex-col">
+                                    <span className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                                      {weight > 0 ? weight.toFixed(3) : "-"}
+                                    </span>
+                                    <span className="text-sm font-semibold">
+                                      {criterion.name}
+                                    </span>
+                                  </div>
                                 </th>
                               );
                             })}
-                          </tr>
-                          <tr>
-                            <th className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40">
-                              \Critérios Alternativas
-                            </th>
-                            {project.criteria.map((criterion) => (
-                              <th
-                                key={`${criterion.id}-name-top`}
-                                className="px-4 py-3 text-center font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40"
-                              >
-                                {criterion.name}
-                              </th>
-                            ))}
                           </tr>
                         </thead>
                         <tbody>

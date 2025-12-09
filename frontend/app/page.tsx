@@ -73,6 +73,7 @@ export default function Home() {
             : Array.isArray(originalData?.criteria)
             ? originalData.criteria.map((c) => ({ id: c.id, name: c.name }))
             : [],
+          subCriteria: projectData.subCriteria || [],
           criteriaMatrix:
             projectData.criteriaMatrix || originalData?.criteriaMatrix || {},
           evaluationValues:
@@ -81,6 +82,7 @@ export default function Home() {
             {},
           criteriaConfig:
             projectData.criteriaConfig || originalData?.criteriaConfig || {},
+          criterionFieldValues: projectData.criterionFieldValues || {},
         },
         projectId
       );
