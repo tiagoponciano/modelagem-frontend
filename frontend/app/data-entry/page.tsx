@@ -4,7 +4,7 @@ import { useDecisionStore } from "../../store/useDecisionStore";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import { useNavigation } from "../../hooks/useNavigation";
 import { useCreateProject, useUpdateProject } from "../../hooks/useProjects";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { API_ENDPOINTS } from "../../lib/constants";
 
@@ -31,7 +31,7 @@ const DATA_PAGES = [
   },
 ];
 
-export default function DataEntryPage() {
+function DataEntryPageContent() {
   const searchParams = useSearchParams();
   const { navigate } = useNavigation();
   const {
@@ -3207,5 +3207,13 @@ export default function DataEntryPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function DataEntryPage() {
+  return (
+    <Suspense fallback={<div>Carregando...</div>}>
+      <DataEntryPageContent />
+    </Suspense>
   );
 }
