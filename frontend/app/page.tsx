@@ -115,7 +115,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300 relative overflow-x-hidden">
+    <div className="h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300 relative overflow-x-hidden flex flex-col">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-blue-400/20 dark:bg-blue-900/20 blur-[100px] rounded-full pointer-events-none" />
       <nav className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-6 h-20 flex justify-between items-center">
@@ -138,8 +138,8 @@ export default function Home() {
         </div>
       </nav>
 
-      <main className="max-w-6xl mx-auto px-6 py-12 relative z-10">
-        <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-200 dark:border-slate-800 text-center mb-16 transition-colors duration-300">
+      <main className="max-w-6xl mx-auto px-6 py-8 relative z-10 flex-1 overflow-y-auto">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-200 dark:border-slate-800 text-center mb-8 transition-colors duration-300">
           <div className="max-w-2xl mx-auto">
             <div className="inline-flex items-center justify-center p-3 bg-blue-50 dark:bg-blue-900/30 rounded-full mb-6 text-blue-600 dark:text-blue-400">
               <svg
@@ -157,10 +157,10 @@ export default function Home() {
                 />
               </svg>
             </div>
-            <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-3 tracking-tight">
               O que vamos decidir hoje?
             </h2>
-            <p className="text-lg text-slate-500 dark:text-slate-400 mb-8 font-light">
+            <p className="text-base text-slate-500 dark:text-slate-400 mb-6 font-light">
               Utilize o método AHP para comparar cidades, fornecedores ou
               estratégias de forma matemática e imparcial.
             </p>
@@ -174,8 +174,8 @@ export default function Home() {
           </div>
         </div>
 
-        <div>
-          <div className="flex items-center justify-between mb-6 px-2">
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-4 px-2">
             <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
               Histórico Recente
               <span className="text-xs font-normal px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-full">
