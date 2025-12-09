@@ -1383,7 +1383,10 @@ function DataEntryPageContent() {
                               rowSpan={2}
                               className="px-4 py-3 text-left font-bold text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/30"
                             >
-                              Critérios Alternativas
+                              <div className="flex flex-col">
+                                <span>Critérios</span>
+                                <span>Alternativas</span>
+                              </div>
                             </th>
                             {project.criteria.map((criterion) => (
                               <th
