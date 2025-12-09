@@ -1333,14 +1333,18 @@ function DataEntryPageContent() {
                         </thead>
                         <tbody>
                           {project.cities.map((city, idx) => {
-                            // Usa results.table.raw se disponível (projeto finalizado)
-                            // ou calculationResults.table.raw (cálculo em tempo real)
+                            // Busca os valores calculados da prioridade de cada cidade por critério
+                            // Primeiro tenta results.table.raw (dados do backend)
                             const resultsTable =
                               calculationResults?.results?.table ||
                               calculationResults?.table ||
                               {};
                             const rawTable = resultsTable?.raw || {};
                             const cityScores = rawTable[city.id] || {};
+                            
+                            // Fallback: tenta cityCriterionScores (estrutura antiga)
+                            const fallbackScores =
+                              calculationResults?.cityCriterionScores?.[city.id] || {};
                             
                             return (
                               <tr
@@ -1355,10 +1359,12 @@ function DataEntryPageContent() {
                                   {city.name}
                                 </td>
                                 {project.criteria.map((criterion) => {
-                                  // Valores brutos por critério/cidade (prioridade da opção)
+                                  // Prioridade da cidade para aquele critério (valores brutos)
                                   const score =
                                     typeof cityScores[criterion.id] === "number"
                                       ? cityScores[criterion.id]
+                                      : typeof fallbackScores[criterion.id] === "number"
+                                      ? fallbackScores[criterion.id]
                                       : 0;
                                   return (
                                     <td
@@ -1406,28 +1412,79 @@ function DataEntryPageContent() {
                         </thead>
                         <tbody>
                           {project.cities.map((city, idx) => {
-                            // Usa results.table se disponível (projeto finalizado)
-                            // ou calculationResults.table (cálculo em tempo real)
+                            // Busca os dados calculados
                             const resultsTable =
                               calculationResults?.results?.table ||
                               calculationResults?.table ||
                               {};
                             
-                            // Tabela ponderada já calculada pelo backend
-                            const weightedTable = resultsTable?.weighted || {};
-                            const weightedValues = weightedTable[city.id] || {};
+                            // Busca os pesos dos critérios
+                            const resultsData =
+                              calculationResults?.results || calculationResults || {};
+                            const criteriaWeights =
+                              resultsData.criteriaWeights ||
+                              calculationResults?.criteriaPriorities?.priorities ||
+                              {};
                             
-                            // Decisão final (soma da linha) já calculada pelo backend
+                            // Busca as prioridades das cidades (da primeira tabela)
+                            const rawTable = resultsTable?.raw || {};
+                            const cityScores = rawTable[city.id] || {};
+                            const fallbackScores =
+                              calculationResults?.cityCriterionScores?.[city.id] || {};
+                            
+                            // Tabela ponderada: prioridade da cidade × prioridade do critério
+                            // Primeiro tenta usar dados já calculados pelo backend
+                            const weightedTable = resultsTable?.weighted || {};
+                            const backendWeightedValues = weightedTable[city.id] || {};
+                            
+                            // Calcula valores ponderados e soma para a decisão final
+                            let finalDecisionSum = 0;
+                            const weightedValues = project.criteria.map((criterion) => {
+                              // Tenta usar valor já calculado pelo backend
+                              if (typeof backendWeightedValues[criterion.id] === "number") {
+                                const value = backendWeightedValues[criterion.id];
+                                finalDecisionSum += value;
+                                return value;
+                              }
+                              
+                              // Calcula manualmente: prioridade do critério × prioridade da cidade
+                              const criterionWeight =
+                                typeof criteriaWeights[criterion.id] === "number"
+                                  ? criteriaWeights[criterion.id]
+                                  : 0;
+                              
+                              const cityPriority =
+                                typeof cityScores[criterion.id] === "number"
+                                  ? cityScores[criterion.id]
+                                  : typeof fallbackScores[criterion.id] === "number"
+                                  ? fallbackScores[criterion.id]
+                                  : 0;
+                              
+                              // Multiplica: prioridade do critério × prioridade da cidade
+                              const weightedValue = criterionWeight * cityPriority;
+                              finalDecisionSum += weightedValue;
+                              
+                              return weightedValue;
+                            });
+                            
+                            // Decisão final: soma da linha (já calculada acima ou do backend)
+                            // O backend pode retornar como decimal (0.553) ou já como porcentagem ("55.3%")
                             const finalScores = resultsTable?.finalScores || {};
                             const finalScoresPercent = resultsTable?.finalScoresPercent || {};
                             
-                            // Usa percentual se disponível, senão calcula do decimal
-                            const finalDecisionValue =
-                              typeof finalScoresPercent[city.id] === "string"
-                                ? finalScoresPercent[city.id]
-                                : typeof finalScores[city.id] === "number"
-                                  ? `${(finalScores[city.id] * 100).toFixed(2)}%`
-                                  : null;
+                            // Determina o valor final da decisão
+                            let finalDecisionValue: string | null = null;
+                            
+                            if (typeof finalScoresPercent[city.id] === "string") {
+                              // Backend já retornou como porcentagem formatada (ex: "55.3%")
+                              finalDecisionValue = finalScoresPercent[city.id];
+                            } else if (typeof finalScores[city.id] === "number") {
+                              // Backend retornou como decimal (ex: 0.553) - multiplica por 100
+                              finalDecisionValue = `${(finalScores[city.id] * 100).toFixed(2)}%`;
+                            } else if (finalDecisionSum > 0) {
+                              // Calculado manualmente - multiplica por 100 para converter para porcentagem
+                              finalDecisionValue = `${(finalDecisionSum * 100).toFixed(2)}%`;
+                            }
 
                             return (
                               <tr
@@ -1441,12 +1498,8 @@ function DataEntryPageContent() {
                                 <td className="px-4 py-3 font-bold text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 bg-blue-50 dark:bg-blue-900/20">
                                   {city.name}
                                 </td>
-                                {project.criteria.map((criterion) => {
-                                  // Valores ponderados já calculados pelo backend
-                                  const weightedValue =
-                                    typeof weightedValues[criterion.id] === "number"
-                                      ? weightedValues[criterion.id]
-                                      : 0;
+                                {project.criteria.map((criterion, criterionIdx) => {
+                                  const weightedValue = weightedValues[criterionIdx] || 0;
                                   return (
                                     <td
                                       key={`${city.id}-${criterion.id}-bottomcell`}
